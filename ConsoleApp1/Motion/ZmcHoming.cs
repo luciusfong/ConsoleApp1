@@ -71,6 +71,7 @@ namespace DeviceScanner.Motion
 
         private bool StartProgram(IntPtr h)
         {
+            ZAux.Execute(h, $"RUN INITSYSTEM", new StringBuilder(256), 256);
             ZAux.SetVrf(h, _cfg.HomeDoneVr, 1, new float[] { 0 });   // clear stale done flag
             if (ZAux.Execute(h, $"RUN {_cfg.HomeProgram}", new StringBuilder(256), 256) != 0)
             {
