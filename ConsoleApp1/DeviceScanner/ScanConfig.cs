@@ -16,7 +16,8 @@ namespace DeviceScanner
             new HashSet<string> { "ITV regulator", "OPT light", "LC18 light" };
 
         // ----- Homing -----
-        public int[] HomeAxes { get; } = { 6, 7, 8 };        // Z, Z2, X, Y, X2, Y2 - placeholder numbers
+        public int[] HomeAxes { get; } = { 6, 7, 8, 9, 10, 11 };        // Z, Z2, X, Y, X2, Y2 - placeholder numbers
+        public string HomeProgram { get; } = "GHOME";
         public string HomeLProgram { get; } = "GLHOME";
         public string HomeRProgram { get; } = "GRHOME";
         public int HomeDoneVr { get; } = 100;                // GHome sets VR(100)=1 as its last line
