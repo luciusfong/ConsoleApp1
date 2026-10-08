@@ -68,6 +68,59 @@ namespace DeviceScanner.Motion
 
             int rcR = zmc.Execute($"RUN {_cfg.HomeRProgram}", out string respR);
             _log($"  > RUN {_cfg.HomeRProgram}  rc={rcR}  resp=\"{respR}\"");
+            // Pump 1
+            new ZmcDiscreteIo(_cfg, _log).Run(zmc, 4, 0, 1000); // SV_PRESS_1 -> PUMP_PRESS_ON_1
+            new ZmcDiscreteIo(_cfg, _log).Run(zmc, 5, 1, 1000); // SV_VAC_1 -> PUMP_VAC_ON_1
+
+            // Pump 2
+            new ZmcDiscreteIo(_cfg, _log).Run(zmc, 7, 5, 1000); // SV_PRESS_2 -> PUMP_PRESS_ON_2 ?
+            new ZmcDiscreteIo(_cfg, _log).Run(zmc, 8, 6, 1000); // SV_VAC_2 -> PUMP_VAC_ON_2 ?
+
+            // Door Lock
+            new ZmcDiscreteIo(_cfg, _log).Run(zmc, 11, 15, 1000); // LOCK_DOOR -> DOOR_LOCKED
+
+            // SMEMA 1
+            new ZmcDiscreteIo(_cfg, _log).Run(zmc, 36, 32, 1000); // SMEMA_1_UPLINE_MC_READY -> SMEMA_1_UPLINE_BD_READY
+            new ZmcDiscreteIo(_cfg, _log).Run(zmc, 37, 33, 1000); // SMEMA_1_DNLINE_BD_READY -> SMEMA_1_DNLINE_MC_READY
+
+            // Station 1 Stopper
+            new ZmcDiscreteIo(_cfg, _log).Run(zmc, 39, 38, 1000); // SV_STOPPER_UP_1 -> SENS_STOPPER_UP_1
+
+            // Station 1 Lifter
+            new ZmcDiscreteIo(_cfg, _log).Run(zmc, 40, 39, 1000); // SV_LIFTER_UP_1 -> SENS_LIFTER_UP_1
+            new ZmcDiscreteIo(_cfg, _log).Run(zmc, 41, 40, 1000); // SV_LIFTER_DOWN_1 -> SENS_LIFTER_DOWN_1
+
+            // Station 1 Chuck Vacuum
+            new ZmcDiscreteIo(_cfg, _log).Run(zmc, 42, 41, 1000); // CHUCK_HEATER_VAC_HIGH_1 -> VAC_CHUCK_ON
+            new ZmcDiscreteIo(_cfg, _log).Run(zmc, 53, 41, 1000); // CHUCK_HEATER_VAC_LOW_1 -> VAC_CHUCK_ON
+
+            // Station 1 Cleaning
+            new ZmcDiscreteIo(_cfg, _log).Run(zmc, 43, 22, 1000); // SV_CLEAN_PRESS -> CLEAN_VAC_ON_1
+            new ZmcDiscreteIo(_cfg, _log).Run(zmc, 44, 22, 1000); // SV_CLEAN_VAC -> CLEAN_VAC_ON_1
+
+            // Station 2 Stopper
+            new ZmcDiscreteIo(_cfg, _log).Run(zmc, 45, 44, 1000); // SV_STOPPER_UP_2 -> SENS_STOPPER_UP_2
+
+            // Station 2 Lifter
+            new ZmcDiscreteIo(_cfg, _log).Run(zmc, 46, 45, 1000); // SV_LIFTER_UP_2 -> SENS_LIFTER_UP_2
+            new ZmcDiscreteIo(_cfg, _log).Run(zmc, 47, 46, 1000); // SV_LIFTER_DOWN_2 -> SENS_LIFTER_DOWN_2
+
+            // Station 2 Chuck Vacuum
+            new ZmcDiscreteIo(_cfg, _log).Run(zmc, 48, 47, 1000); // CHUCK_HEATER_VAC_HIGH_2 -> VAC_CHUCK_ON_2
+            new ZmcDiscreteIo(_cfg, _log).Run(zmc, 54, 47, 1000); // CHUCK_HEATER_VAC_LOW_2 -> VAC_CHUCK_ON_2
+
+            // Station 2 Cleaning
+            new ZmcDiscreteIo(_cfg, _log).Run(zmc, 49, 23, 1000); // SV_CLEAN_PRESS_2 -> CLEAN_VAC_ON_2
+            new ZmcDiscreteIo(_cfg, _log).Run(zmc, 50, 23, 1000); // SV_CLEAN_VAC_2 -> CLEAN_VAC_ON_2
+
+            // SMEMA 2
+            new ZmcDiscreteIo(_cfg, _log).Run(zmc, 51, 34, 1000); // SMEMA_2_UPLINE_MC_READY -> SMEMA_2_UPLINE_BD_READY
+            new ZmcDiscreteIo(_cfg, _log).Run(zmc, 52, 35, 1000); // SMEMA_2_DNLINE_BD_READY -> SMEMA_2_DNLINE_MC_READY
+
+            // Nozzle Clean
+            new ZmcDiscreteIo(_cfg, _log).Run(zmc, 55, 52, 1000); // SV_NOOZLE_CLEAN -> VERMES_NOZ_CLEAN_ON
+
+
             return rcL == 0 && rcR == 0;
         }
 

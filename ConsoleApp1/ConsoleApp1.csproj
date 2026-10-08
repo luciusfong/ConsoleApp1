@@ -69,6 +69,7 @@
   <ItemGroup>
     <Compile Include="DeviceScanner\Program.cs" />
     <Compile Include="DeviceScanner\ScanConfig.cs" />
+    <Compile Include="Motion\ZmcDiscreteIo.cs" />
     <Compile Include="Motion\ZmcHoming.cs" />
     <Compile Include="Motion\ZmcInit.cs" />
     <Compile Include="Native\ZAux.cs" />

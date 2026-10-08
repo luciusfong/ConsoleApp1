@@ -31,5 +31,6 @@ namespace DeviceScanner
         public int IdleQuietMs { get; } = 7000;              // all axes idle this long = homing finished
         public int HomeTimeoutMs { get; } = 60000;
         public int AxisSettleTimeoutMs { get; } = 10000;
+        public int IoScanCount { get; } = 64;
     }
 }
