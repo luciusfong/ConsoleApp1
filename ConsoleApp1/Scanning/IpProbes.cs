@@ -31,8 +31,8 @@ namespace DeviceScanner.Scanning
             }),
             new DeviceProbe(Zmc, ip =>
             {
-                IntPtr h = IntPtr.Zero;
-                return ProbeHelpers.Run(() => ZAux.OpenEth(ip, out h) == 0, () => { if (h != IntPtr.Zero) ZAux.Close(h); });
+                var zmc = new ZmcConnection();
+                return ProbeHelpers.Run(() => zmc.Open(ip), () => zmc.Close());
             }),
         };
     }

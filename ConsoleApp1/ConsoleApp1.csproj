@@ -70,7 +70,9 @@
     <Compile Include="DeviceScanner\Program.cs" />
     <Compile Include="DeviceScanner\ScanConfig.cs" />
     <Compile Include="Motion\ZmcHoming.cs" />
+    <Compile Include="Motion\ZmcInit.cs" />
     <Compile Include="Native\ZAux.cs" />
+    <Compile Include="Native\ZmcConnection.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="Reporting\ScanSummary.cs" />
     <Compile Include="Scanning\ComProbes.cs" />

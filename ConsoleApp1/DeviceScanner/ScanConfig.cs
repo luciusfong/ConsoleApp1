@@ -15,16 +15,21 @@ namespace DeviceScanner
         public HashSet<string> MultiInstanceComDevices { get; } =
             new HashSet<string> { "ITV regulator", "OPT light", "LC18 light" };
 
+        // ----- Controller init -----
+        public int InitTimeoutMs { get; } = 10000;           // wait for sysstate == 1 after "run initsystem"
+
         // ----- Homing -----
-        public int[] HomeAxes { get; } = { 6, 7, 8, 9, 10, 11 };        // Z, Z2, X, Y, X2, Y2 - placeholder numbers
-        public string HomeProgram { get; } = "GHOME";
         public string HomeLProgram { get; } = "GLHOME";
         public string HomeRProgram { get; } = "GRHOME";
-        public int HomeDoneVr { get; } = 100;                // GHome sets VR(100)=1 as its last line
+        public string InitProgram { get; } = "INITSYSTEM";
+        public int[] HomeAxesOverride { get; } = { 6, 7, 8, 9, 10, 11 };        // empty = auto-discover via NAXES/ATYPE
+        public int MaxProbeAxes { get; } = 32;               // upper bound when auto-discovering axes
+        public int[] ExcludeAxes { get; } = { };             // pumps / encoders / conveyors you don't want awaited
+        public bool UseDoneFlag { get; } = false;            // true only if GHome sets VR(HomeDoneVr)=1 at the end
+        public int HomeDoneVr { get; } = 100;
+        public int StartWaitMs { get; } = 3000;              // max wait for first axis to move after RUN
+        public int IdleQuietMs { get; } = 7000;              // all axes idle this long = homing finished
         public int HomeTimeoutMs { get; } = 60000;
         public int AxisSettleTimeoutMs { get; } = 10000;
-        public bool UseDoneFlag { get; } = false;        // true only after GHome sets VR(100)=1
-        public int StartWaitMs { get; } = 3000;          // max wait for first axis to move after RUN
-        public int IdleQuietMs { get; } = 7000;          // all axes idle this long = homing finished
     }
 }
