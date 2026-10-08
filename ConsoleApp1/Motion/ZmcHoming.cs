@@ -71,11 +71,16 @@ namespace DeviceScanner.Motion
 
         private bool StartProgram(IntPtr h)
         {
-            ZAux.Execute(h, $"RUN INITSYSTEM", new StringBuilder(256), 256);
+            //ZAux.Execute(h, $"RUN INITSYSTEM", new StringBuilder(256), 256);
             ZAux.SetVrf(h, _cfg.HomeDoneVr, 1, new float[] { 0 });   // clear stale done flag
-            if (ZAux.Execute(h, $"RUN {_cfg.HomeProgram}", new StringBuilder(256), 256) != 0)
+            if (ZAux.Execute(h, $"RUN {_cfg.HomeLProgram}", new StringBuilder(256), 256) != 0)
             {
-                _log($"RUN {_cfg.HomeProgram} failed.");
+                _log($"RUN {_cfg.HomeLProgram} failed.");
+                return false;
+            }
+            if (ZAux.Execute(h, $"RUN {_cfg.HomeRProgram}", new StringBuilder(256), 256) != 0)
+            {
+                _log($"RUN {_cfg.HomeRProgram} failed.");
                 return false;
             }
             return true;
@@ -94,7 +99,8 @@ namespace DeviceScanner.Motion
                 {
                     var resp = new StringBuilder(256);
                     foreach (int a in _cfg.HomeAxes) ZAux.Execute(h, $"BASE({a}) CANCEL(2)", resp, 256);
-                    _log($"{_cfg.HomeProgram} timeout.");
+                    _log($"{_cfg.HomeLProgram} timeout.");
+                    _log($"{_cfg.HomeRProgram} timeout.");
                     return false;
                 }
                 Thread.Sleep(50);
