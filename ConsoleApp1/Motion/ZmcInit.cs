@@ -13,9 +13,10 @@ namespace DeviceScanner.Motion
     internal sealed class ZmcInit
     {
         private readonly ScanConfig _cfg;
+        private readonly string _initProgram;
         private readonly Action<string> _log;
 
-        public ZmcInit(ScanConfig cfg, Action<string> log) { _cfg = cfg; _log = log; }
+        public ZmcInit(ScanConfig cfg, string initProgram, Action<string> log) { _cfg = cfg; _initProgram = initProgram; _log = log; }
 
         /// <summary>Returns true when sysstate == 1 (already, or after running initsystem).</summary>
         public bool EnsureReady(ZmcConnection zmc)
@@ -24,8 +25,8 @@ namespace DeviceScanner.Motion
             _log($"sysstate = {state}");
             if (state == 1) return true;                 // already initialized, nothing to do
 
-            int rc = zmc.Execute($"RUN {_cfg.InitProgram}", out string resp);
-            _log($"  > RUN {_cfg.InitProgram}  rc={rc}  resp=\"{resp}\"");
+            int rc = zmc.Execute($"RUN {_initProgram}", out string resp);
+            _log($"  > RUN {_initProgram}  rc={rc}  resp=\"{resp}\"");
             if (rc != 0) return false;
 
             var sw = Stopwatch.StartNew();

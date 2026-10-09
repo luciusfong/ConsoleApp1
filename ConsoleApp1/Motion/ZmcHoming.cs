@@ -5,40 +5,66 @@ using System.Globalization;
 using System.Linq;
 using System.Threading;
 using DeviceScanner.Native;
+using DeviceScanner.Profiles;
+using DeviceScanner.Reporting;
 
 namespace DeviceScanner.Motion
 {
-    /// <summary>Initializes the controller, runs the homing BASIC program and waits for it to finish.</summary>
+    /// <summary>Initializes the controller, runs the profile's homing programs and waits for them to finish.</summary>
     internal sealed class ZmcHoming
     {
         private readonly ScanConfig _cfg;
+        private readonly MachineProfile _profile;
         private readonly Action<string> _log;
         private int[] _axes = new int[0];
+        private string _failure = "";
 
-        public ZmcHoming(ScanConfig cfg, Action<string> log) { _cfg = cfg; _log = log; }
-
-        public bool Run(string ip)
+        public ZmcHoming(ScanConfig cfg, MachineProfile profile, Action<string> log)
         {
+            _cfg = cfg; _profile = profile; _log = log;
+        }
+
+        public HomeResult Run()
+        {
+            var sw = Stopwatch.StartNew();
+            bool ok;
+
             using (var zmc = new ZmcConnection())
             {
-                if (!zmc.Open(ip)) { _log("Cannot reopen ZMC."); return false; }
-
-                _axes = DiscoverAxes(zmc);
-                if (_axes.Length == 0) { _log("No axes found."); return false; }
-                _log($"Axes: {string.Join(", ", _axes)}");
-
-                return new ZmcInit(_cfg, _log).EnsureReady(zmc)
-                    && StartProgram(zmc)
-                    && (_cfg.UseDoneFlag ? WaitForDoneFlag(zmc) : WaitForQuiet(zmc))
-                    && WaitForAxesIdle(zmc);
+                ok = zmc.Open(_profile.ZmcIp) ? Execute(zmc) : Fail($"cannot open ZMC at {_profile.ZmcIp}");
             }
+
+            return new HomeResult
+            {
+                Success = ok,
+                Detail = ok ? "" : _failure,
+                Programs = string.Join(", ", _profile.HomePrograms),
+                Axes = _axes,
+                Elapsed = sw.Elapsed
+            };
+        }
+
+        private bool Execute(ZmcConnection zmc)
+        {
+            if (_profile.HomePrograms.Count == 0) return Fail("profile has no home.programs");
+
+            _axes = DiscoverAxes(zmc);
+            if (_axes.Length == 0) return Fail("no axes found (set home.axes in the profile)");
+            _log($"Axes: {string.Join(", ", _axes)}");
+
+            if (!new ZmcInit(_cfg, _profile.InitProgram, _log).EnsureReady(zmc))
+                return Fail($"{_profile.InitProgram} did not bring the controller to sysstate=1");
+
+            if (!StartPrograms(zmc)) return false;
+            if (!(_cfg.UseDoneFlag ? WaitForDoneFlag(zmc) : WaitForQuiet(zmc))) return false;
+            return WaitForAxesIdle(zmc);
         }
 
         // ---------- axis discovery ----------
 
         private int[] DiscoverAxes(ZmcConnection zmc)
         {
-            if (_cfg.HomeAxesOverride.Length > 0) return _cfg.HomeAxesOverride;
+            if (_profile.HomeAxes.Length > 0) return _profile.HomeAxes;
 
             var list = new List<int>();
             for (int i = 0; i < _cfg.MaxProbeAxes; i++)
@@ -59,69 +85,29 @@ namespace DeviceScanner.Motion
 
         // ---------- start ----------
 
-        private bool StartProgram(ZmcConnection zmc)
+        private bool StartPrograms(ZmcConnection zmc)
         {
             zmc.SetVr(_cfg.HomeDoneVr, 0);               // clear stale done flag (only used if UseDoneFlag)
 
-            int rcL = zmc.Execute($"RUN {_cfg.HomeLProgram}", out string respL);
-            _log($"  > RUN {_cfg.HomeLProgram}  rc={rcL}  resp=\"{respL}\"");
+            var failed = new List<string>();
+            foreach (string program in _profile.HomePrograms)
+            {
+                int rc = zmc.Execute($"RUN {program}", out string resp);
+                _log($"  > RUN {program}  rc={rc}  resp=\"{resp}\"");
 
-            int rcR = zmc.Execute($"RUN {_cfg.HomeRProgram}", out string respR);
-            _log($"  > RUN {_cfg.HomeRProgram}  rc={rcR}  resp=\"{respR}\"");
-            // Pump 1
-            new ZmcDiscreteIo(_cfg, _log).Run(zmc, 4, 0, 1000); // SV_PRESS_1 -> PUMP_PRESS_ON_1
-            new ZmcDiscreteIo(_cfg, _log).Run(zmc, 5, 1, 1000); // SV_VAC_1 -> PUMP_VAC_ON_1
+                // the controller reports errors as reply text with rc=0
+                if (rc != 0 || resp.IndexOf("error", StringComparison.OrdinalIgnoreCase) >= 0) failed.Add(program);
+            }
 
-            // Pump 2
-            new ZmcDiscreteIo(_cfg, _log).Run(zmc, 7, 5, 1000); // SV_PRESS_2 -> PUMP_PRESS_ON_2 ?
-            new ZmcDiscreteIo(_cfg, _log).Run(zmc, 8, 6, 1000); // SV_VAC_2 -> PUMP_VAC_ON_2 ?
+            if (failed.Count == 0) return true;
 
-            // Door Lock
-            new ZmcDiscreteIo(_cfg, _log).Run(zmc, 11, 15, 1000); // LOCK_DOOR -> DOOR_LOCKED
+            CancelAxes(zmc);
+            return Fail($"could not start: {string.Join(", ", failed)}");
+        }
 
-            // SMEMA 1
-            new ZmcDiscreteIo(_cfg, _log).Run(zmc, 36, 32, 1000); // SMEMA_1_UPLINE_MC_READY -> SMEMA_1_UPLINE_BD_READY
-            new ZmcDiscreteIo(_cfg, _log).Run(zmc, 37, 33, 1000); // SMEMA_1_DNLINE_BD_READY -> SMEMA_1_DNLINE_MC_READY
-
-            // Station 1 Stopper
-            new ZmcDiscreteIo(_cfg, _log).Run(zmc, 39, 38, 1000); // SV_STOPPER_UP_1 -> SENS_STOPPER_UP_1
-
-            // Station 1 Lifter
-            new ZmcDiscreteIo(_cfg, _log).Run(zmc, 40, 39, 1000); // SV_LIFTER_UP_1 -> SENS_LIFTER_UP_1
-            new ZmcDiscreteIo(_cfg, _log).Run(zmc, 41, 40, 1000); // SV_LIFTER_DOWN_1 -> SENS_LIFTER_DOWN_1
-
-            // Station 1 Chuck Vacuum
-            new ZmcDiscreteIo(_cfg, _log).Run(zmc, 42, 41, 1000); // CHUCK_HEATER_VAC_HIGH_1 -> VAC_CHUCK_ON
-            new ZmcDiscreteIo(_cfg, _log).Run(zmc, 53, 41, 1000); // CHUCK_HEATER_VAC_LOW_1 -> VAC_CHUCK_ON
-
-            // Station 1 Cleaning
-            new ZmcDiscreteIo(_cfg, _log).Run(zmc, 43, 22, 1000); // SV_CLEAN_PRESS -> CLEAN_VAC_ON_1
-            new ZmcDiscreteIo(_cfg, _log).Run(zmc, 44, 22, 1000); // SV_CLEAN_VAC -> CLEAN_VAC_ON_1
-
-            // Station 2 Stopper
-            new ZmcDiscreteIo(_cfg, _log).Run(zmc, 45, 44, 1000); // SV_STOPPER_UP_2 -> SENS_STOPPER_UP_2
-
-            // Station 2 Lifter
-            new ZmcDiscreteIo(_cfg, _log).Run(zmc, 46, 45, 1000); // SV_LIFTER_UP_2 -> SENS_LIFTER_UP_2
-            new ZmcDiscreteIo(_cfg, _log).Run(zmc, 47, 46, 1000); // SV_LIFTER_DOWN_2 -> SENS_LIFTER_DOWN_2
-
-            // Station 2 Chuck Vacuum
-            new ZmcDiscreteIo(_cfg, _log).Run(zmc, 48, 47, 1000); // CHUCK_HEATER_VAC_HIGH_2 -> VAC_CHUCK_ON_2
-            new ZmcDiscreteIo(_cfg, _log).Run(zmc, 54, 47, 1000); // CHUCK_HEATER_VAC_LOW_2 -> VAC_CHUCK_ON_2
-
-            // Station 2 Cleaning
-            new ZmcDiscreteIo(_cfg, _log).Run(zmc, 49, 23, 1000); // SV_CLEAN_PRESS_2 -> CLEAN_VAC_ON_2
-            new ZmcDiscreteIo(_cfg, _log).Run(zmc, 50, 23, 1000); // SV_CLEAN_VAC_2 -> CLEAN_VAC_ON_2
-
-            // SMEMA 2
-            new ZmcDiscreteIo(_cfg, _log).Run(zmc, 51, 34, 1000); // SMEMA_2_UPLINE_MC_READY -> SMEMA_2_UPLINE_BD_READY
-            new ZmcDiscreteIo(_cfg, _log).Run(zmc, 52, 35, 1000); // SMEMA_2_DNLINE_BD_READY -> SMEMA_2_DNLINE_MC_READY
-
-            // Nozzle Clean
-            new ZmcDiscreteIo(_cfg, _log).Run(zmc, 55, 52, 1000); // SV_NOOZLE_CLEAN -> VERMES_NOZ_CLEAN_ON
-
-
-            return rcL == 0 && rcR == 0;
+        private void CancelAxes(ZmcConnection zmc)
+        {
+            foreach (int a in _axes) zmc.Execute($"BASE({a}) CANCEL(2)");
         }
 
         // ---------- waiting strategies ----------
@@ -143,10 +129,7 @@ namespace DeviceScanner.Motion
             while (!AnyBusy(zmc))
             {
                 if (sw.ElapsedMilliseconds > _cfg.StartWaitMs)
-                {
-                    _log("No axis moved after RUN. GHome may not have started, or the axes are wrong.");
-                    return false;
-                }
+                    return Fail("no axis moved after RUN (programs did not start, or home.axes is wrong)");
                 Thread.Sleep(20);
             }
 
@@ -156,10 +139,7 @@ namespace DeviceScanner.Motion
             {
                 if (AnyBusy(zmc)) quiet.Restart();
                 if (total.ElapsedMilliseconds > _cfg.HomeTimeoutMs)
-                {
-                    _log("Homing still moving after timeout.");
-                    return false;
-                }
+                    return Fail($"axes still moving after {_cfg.HomeTimeoutMs / 1000} s");
                 Thread.Sleep(20);
             }
             return true;
@@ -171,20 +151,13 @@ namespace DeviceScanner.Motion
             var sw = Stopwatch.StartNew();
             while (true)
             {
-                if (!zmc.GetVr(_cfg.HomeDoneVr, out float v)) { _log("GetVr failed (comms/SDK error)."); return false; }
+                if (!zmc.GetVr(_cfg.HomeDoneVr, out float v)) return Fail("GetVr failed (comms/SDK error)");
                 if (v == 1) return true;
 
                 if (sw.ElapsedMilliseconds > _cfg.HomeTimeoutMs)
                 {
-                    foreach (int a in _axes) zmc.Execute($"BASE({a}) CANCEL(2)");
-                    _log($"{_cfg.HomeLProgram} timeout. VR({_cfg.HomeDoneVr}) = {v}");
-                    return false;
-                }
-                if (sw.ElapsedMilliseconds > _cfg.HomeTimeoutMs)
-                {
-                    foreach (int a in _axes) zmc.Execute($"BASE({a}) CANCEL(2)");
-                    _log($"{_cfg.HomeRProgram} timeout. VR({_cfg.HomeDoneVr}) = {v}");
-                    return false;
+                    CancelAxes(zmc);
+                    return Fail($"timeout waiting for VR({_cfg.HomeDoneVr})=1 (now {v}) from {string.Join(", ", _profile.HomePrograms)}");
                 }
                 Thread.Sleep(50);
             }
@@ -199,14 +172,18 @@ namespace DeviceScanner.Motion
                 {
                     if (zmc.TryGetIdle(a, out bool idle) && idle) break;
                     if (sw.ElapsedMilliseconds > _cfg.AxisSettleTimeoutMs)
-                    {
-                        _log($"Axis {a} still busy.");
-                        return false;
-                    }
+                        return Fail($"axis {a} still busy after {_cfg.AxisSettleTimeoutMs / 1000} s");
                     Thread.Sleep(20);
                 }
             }
             return true;
+        }
+
+        private bool Fail(string message)
+        {
+            _failure = message;
+            _log("  " + message);
+            return false;
         }
     }
 }

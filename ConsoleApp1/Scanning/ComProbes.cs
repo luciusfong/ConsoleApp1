@@ -7,7 +7,7 @@ namespace DeviceScanner.Scanning
     /// <summary>COM-port device probes (slow ones last).</summary>
     internal static class ComProbes
     {
-        public static IReadOnlyList<DeviceProbe> Build(ScanConfig cfg) => new[]
+        public static IReadOnlyList<DeviceProbe> Build(int[] tempSlaves) => new[]
         {
             new DeviceProbe("ITV regulator", com =>
             {
@@ -24,10 +24,10 @@ namespace DeviceScanner.Scanning
                 var d = new OPT();
                 return ProbeHelpers.Run(() => d.Open(com), () => d.Close());
             }),
-            new DeviceProbe("Temp TK",  com => TxtkProbe(com, "TK", cfg.TempSlaves)),
-            new DeviceProbe("Temp TX",  com => TxtkProbe(com, "TX", cfg.TempSlaves)),
-            new DeviceProbe("Temp TM2", com => TmProbe(com, "TM2", cfg.TempSlaves)),
-            new DeviceProbe("Temp TM4", com => TmProbe(com, "TM4", cfg.TempSlaves)),
+            new DeviceProbe("Temp TK",  com => TxtkProbe(com, "TK", tempSlaves)),
+            new DeviceProbe("Temp TX",  com => TxtkProbe(com, "TX", tempSlaves)),
+            new DeviceProbe("Temp TM2", com => TmProbe(com, "TM2", tempSlaves)),
+            new DeviceProbe("Temp TM4", com => TmProbe(com, "TM4", tempSlaves)),
             new DeviceProbe("LC18 light", com =>
             {
                 var d = new LC18();

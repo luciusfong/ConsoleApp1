@@ -68,6 +68,27 @@ namespace DeviceScanner.Native
                 ? (int)v : fallback;
         }
 
+        /// <summary>
+        /// Reads inputs 0..count-1 with one request per 32 inputs. IN(first,last) returns the whole range as
+        /// one number (bit 0 = first). Returns 1/0 per input, or null if the controller did not return a number.
+        /// </summary>
+        public int[] ReadInputsBulk(int count)
+        {
+            var values = new int[count];
+            for (int first = 0; first < count; first += 32)
+            {
+                int last = Math.Min(first + 32, count) - 1;
+
+                if (!double.TryParse(Query($"IN({first},{last})"), NumberStyles.Float, CultureInfo.InvariantCulture, out double word)
+                    || word < 0)
+                    return null;
+
+                long bits = (long)word;
+                for (int b = 0; b <= last - first; b++) values[first + b] = (int)((bits >> b) & 1);
+            }
+            return values;
+        }
+
         // ---------- VR variables ----------
 
         public bool SetVr(int index, float value) =>
