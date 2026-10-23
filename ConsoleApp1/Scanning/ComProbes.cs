@@ -33,6 +33,11 @@ namespace DeviceScanner.Scanning
                 var d = new LC18();
                 return ProbeHelpers.Run(() => d.Open(com, 115200) ? true : throw new Exception("no reply"), () => d.Close());
             }),
+            new DeviceProbe("ViscoTec EcoSpray", com =>
+            {
+                var d = new ViscoTec_EC200();
+                return ProbeHelpers.Run(() => d.Open(com) ? true : throw new Exception("no reply"), () => d.Close());
+            }),
         };
 
         private static ProbeResult TxtkProbe(string com, string model, int[] slaves)

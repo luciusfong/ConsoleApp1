@@ -1,9 +1,14 @@
-using System;
 using DeviceScanner.Motion;
 using DeviceScanner.Native;
 using DeviceScanner.Profiles;
 using DeviceScanner.Reporting;
 using DeviceScanner.Scanning;
+using iText.Kernel.Pdf;
+using iText.Layout.Element;
+using System;
+using System.Text;
+using iText.Layout;
+
 
 namespace DeviceScanner
 {
@@ -39,7 +44,7 @@ namespace DeviceScanner
             else if (Confirm($"\nRun {profile.IoTests.Count} discrete IO tests? Outputs will really switch (lifters, stoppers, vacuum...). Clear the machine first."))
                 RunIoTests(cfg, profile, report, log);
 
-            ScanSummary.Print(report, log);
+            ScanSummary.Print(report, cfg, log);
             Pause();
         }
 

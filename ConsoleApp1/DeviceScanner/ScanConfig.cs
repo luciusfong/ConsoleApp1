@@ -31,5 +31,7 @@ namespace DeviceScanner
         // ----- discrete IO test -----
         public int IoScanCount { get; } = 64;                // inputs 0..N-1 are read before/after each toggle
         public int IoSettleMs { get; } = 1000;               // used when a profile io line has no settle time
+        public string Password = "ScanReport"; // password for PDF encryption
+        public string ReportDir = "ScanReports"; // directory to save PDF reports
     }
 }
