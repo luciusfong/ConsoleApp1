@@ -3,6 +3,7 @@ using DeviceScanner.Native;
 using DeviceScanner.Profiles;
 using DeviceScanner.Reporting;
 using DeviceScanner.Scanning;
+using DeviceScanner.WindowsSpec;
 using iText.Kernel.Pdf;
 using iText.Layout.Element;
 using System;
@@ -24,6 +25,10 @@ namespace DeviceScanner
             if (profile == null) { Pause(); return; }
 
             var report = new RunReport(profile);
+
+            // 0. Windows golden-image spec (read only: OS, locale, Defender, NIC settings, drivers, apps, Chinese file names)
+            if (Confirm("\nRun Windows spec check (read only; the Chinese file-name scan can take a few minutes)?"))
+                report.WindowsSpec = new WindowsSpecChecker(cfg, new WindowsSpecConfig(), profile, log).Run();
 
             // 1. every device the profile lists, at the address the profile gives
             new ProfileVerifier(cfg, profile, log).Run(report);
@@ -50,7 +55,7 @@ namespace DeviceScanner
 
         private static void Discover(ScanConfig cfg, MachineProfile profile, RunReport report, Action<string> log)
         {
-            report.DiscoveredIp = new IpScanner(cfg, IpProbes.Build(), log).Scan();
+            report.DiscoveredIp = new IpScanner(cfg, IpProbes.Build(cfg), log).Scan();
             report.DiscoveredCom = new ComScanner(cfg, ComProbes.Build(profile.TempSlaves), log).Scan();
         }
 

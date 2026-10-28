@@ -128,6 +128,7 @@
     <Reference Include="System.Memory, Version=4.0.1.1, Culture=neutral, PublicKeyToken=cc7b13ffcd2ddd51, processorArchitecture=MSIL">
       <HintPath>..\packages\System.Memory.4.5.4\lib\net461\System.Memory.dll</HintPath>
     </Reference>
+    <Reference Include="System.Management" />
     <Reference Include="System.Numerics" />
     <Reference Include="System.Numerics.Vectors, Version=4.1.4.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a, processorArchitecture=MSIL">
       <HintPath>..\packages\System.Numerics.Vectors.4.5.0\lib\net46\System.Numerics.Vectors.dll</HintPath>
@@ -136,6 +137,7 @@
       <HintPath>..\packages\System.Runtime.CompilerServices.Unsafe.5.0.0\lib\net45\System.Runtime.CompilerServices.Unsafe.dll</HintPath>
     </Reference>
     <Reference Include="System.Security" />
+    <Reference Include="System.ServiceProcess" />
     <Reference Include="System.Security.AccessControl, Version=6.0.0.1, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a, processorArchitecture=MSIL">
       <HintPath>..\packages\System.Security.AccessControl.6.0.1\lib\net461\System.Security.AccessControl.dll</HintPath>
     </Reference>
@@ -159,7 +161,7 @@
     <Reference Include="System.Xml" />
     <Reference Include="NSW_Components, Version=2.3.0.0, Culture=neutral, processorArchitecture=AMD64">
       <SpecificVersion>False</SpecificVersion>
-      <HintPath>..\dll\NSW_Components.dll</HintPath>
+      <HintPath>External\NSW_Components.dll</HintPath>
     </Reference>
   </ItemGroup>
   <ItemGroup>
@@ -183,20 +185,189 @@
     <Compile Include="Scanning\DeviceProbe.cs" />
     <Compile Include="Scanning\IpProbes.cs" />
     <Compile Include="Scanning\IpScanner.cs" />
+    <Compile Include="Scanning\NicRoute.cs" />
     <Compile Include="Scanning\ProbeHelpers.cs" />
     <Compile Include="Scanning\ProbeResult.cs" />
     <Compile Include="Scanning\ProfileVerifier.cs" />
+    <Compile Include="WindowsSpec\ChineseNameCheck.cs" />
+    <Compile Include="WindowsSpec\DefenderCheck.cs" />
+    <Compile Include="WindowsSpec\DriverStoreCheck.cs" />
+    <Compile Include="WindowsSpec\ForbiddenAppCheck.cs" />
+    <Compile Include="WindowsSpec\LocaleCheck.cs" />
+    <Compile Include="WindowsSpec\NicSettingsCheck.cs" />
+    <Compile Include="WindowsSpec\OsVersionCheck.cs" />
+    <Compile Include="WindowsSpec\SpecCheck.cs" />
+    <Compile Include="WindowsSpec\SpecHelpers.cs" />
+    <Compile Include="WindowsSpec\SpecReport.cs" />
+    <Compile Include="WindowsSpec\WindowsSpecChecker.cs" />
+    <Compile Include="WindowsSpec\WindowsSpecConfig.cs" />
   </ItemGroup>
   <ItemGroup>
     <None Include="App.config" />
     <None Include="packages.config" />
     <None Include="Profiles\sd1x.profile" />
   </ItemGroup>
+  <!-- Third-party DLLs: kept in External\, copied flat next to the exe.
+       NSW_Components.dll is copied by its Reference; Newtonsoft.Json.dll comes from the NuGet package. -->
   <ItemGroup>
-    <Content Include="NSW_Components.dll" />
-    <Content Include="OPTController.dll" />
-    <Content Include="zauxdll.dll" />
-    <Content Include="zmotion.dll" />
+    <Content Include="External\_msvcp140.dll">
+      <Link>_msvcp140.dll</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="External\ACS.SPiiPlusNET.dll">
+      <Link>ACS.SPiiPlusNET.dll</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="External\AdvMotAPI.dll">
+      <Link>AdvMotAPI.dll</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="External\CL3_IF.dll">
+      <Link>CL3_IF.dll</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="External\Cognex.Cnx.Common.dll">
+      <Link>Cognex.Cnx.Common.dll</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="External\Cognex.DataMan.SDK.Discovery.PC.dll">
+      <Link>Cognex.DataMan.SDK.Discovery.PC.dll</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="External\Cognex.DataMan.SDK.PC.dll">
+      <Link>Cognex.DataMan.SDK.PC.dll</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="External\Cognex.DataMan.SDK.Utils.PC.dll">
+      <Link>Cognex.DataMan.SDK.Utils.PC.dll</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="External\concrt140.dll">
+      <Link>concrt140.dll</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="External\CoronaLink.dll">
+      <Link>CoronaLink.dll</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="External\cvextern.dll">
+      <Link>cvextern.dll</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="External\EEIP.dll">
+      <Link>EEIP.dll</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="External\Emgu.CV.UI.dll">
+      <Link>Emgu.CV.UI.dll</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="External\Emgu.CV.World.Netstandard.dll">
+      <Link>Emgu.CV.World.Netstandard.dll</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="External\HPC15.dll">
+      <Link>HPC15.dll</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="External\libdevices-csharp.dll">
+      <Link>libdevices-csharp.dll</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="External\libiomp5md.dll">
+      <Link>libiomp5md.dll</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="External\libmmd.dll">
+      <Link>libmmd.dll</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="External\LJV7_IF.dll">
+      <Link>LJV7_IF.dll</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="External\LoaderUNloader_Unisem.dll">
+      <Link>LoaderUNloader_Unisem.dll</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="External\MEDAQLib.dll">
+      <Link>MEDAQLib.dll</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="External\MEDAQLib.NET.dll">
+      <Link>MEDAQLib.NET.dll</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="External\MHS3Lib.dll">
+      <Link>MHS3Lib.dll</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="External\msvcp140.dll">
+      <Link>msvcp140.dll</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="External\MvCameraControl.Net.dll">
+      <Link>MvCameraControl.Net.dll</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="External\NSW_Define.dll">
+      <Link>NSW_Define.dll</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="External\NUtils.dll">
+      <Link>NUtils.dll</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="External\Open_eVision_NetApi_2_5.dll">
+      <Link>Open_eVision_NetApi_2_5.dll</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="External\opencv_videoio_ffmpeg420_64.dll">
+      <Link>opencv_videoio_ffmpeg420_64.dll</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="External\OPTController.dll">
+      <Link>OPTController.dll</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="External\svml_dispmd.dll">
+      <Link>svml_dispmd.dll</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="External\System.Drawing.Common.dll">
+      <Link>System.Drawing.Common.dll</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="External\tbb.dll">
+      <Link>tbb.dll</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="External\vcruntime140.dll">
+      <Link>vcruntime140.dll</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="External\zauxdll.dll">
+      <Link>zauxdll.dll</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="External\ZKA64.dll">
+      <Link>ZKA64.dll</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="External\ZKANet64.dll">
+      <Link>ZKANet64.dll</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="External\zmotion.dll">
+      <Link>zmotion.dll</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="External\zxing.dll">
+      <Link>zxing.dll</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <None Include="External\NSW_Components.dll" />
+    <None Include="External\Newtonsoft.Json.dll" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
 </Project>

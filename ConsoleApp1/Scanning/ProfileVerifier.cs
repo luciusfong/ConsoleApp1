@@ -27,7 +27,7 @@ namespace DeviceScanner.Scanning
         {
             _log("\n--- Verifying devices against profile ---");
 
-            var ipProbes = IpProbes.Build();
+            var ipProbes = IpProbes.Build(_cfg);
             var comProbes = ComProbes.Build(_profile.TempSlaves);
 
             // the controller first, then everything else the profile lists
@@ -65,19 +65,27 @@ namespace DeviceScanner.Scanning
         {
             switch (r.Status)
             {
-                case ProbeStatus.Ok: return Finish(c, CheckStatus.Pass, "");
-                case ProbeStatus.Busy: return Finish(c, CheckStatus.Pass, "present, in use by another program");
+                case ProbeStatus.Ok: return Finish(c, CheckStatus.Pass, r.Note ?? "");
+                case ProbeStatus.Busy: return Finish(c, CheckStatus.Pass, "present, in use by another program" + (r.Note == null ? "" : "; " + r.Note));
                 default: return Finish(c, CheckStatus.Fail, r.Message);
             }
         }
 
         private DeviceCheck Finish(DeviceCheck c, CheckStatus status, string detail)
         {
+            // IP devices: always show which local NIC Windows routes to them through, even if the device did not answer
+            if (c.Kind == "IP" && (detail ?? "").IndexOf("[PCI", StringComparison.OrdinalIgnoreCase) < 0)
+                detail = (string.IsNullOrEmpty(detail) ? "" : detail + "; ") + RouteNote(c.Address, c.Device);
+
             c.Status = status;
             c.Detail = detail;
             _log($"  {c.Kind,-3} {c.Address,-15} {c.Device,-14} -> {status.ToString().ToUpper()} {detail}");
             return c;
         }
+
+        /// <summary>"via Ethernet 3 / Intel(R) I350 ... [PCI\VEN_8086&DEV_1521]" from the routing table (no device needed).</summary>
+        private string RouteNote(string ip, string device) =>
+            NicRoute.Note(ip, device.Equals("Camera GigE", StringComparison.OrdinalIgnoreCase) ? _cfg.CameraNicPnpId : null);
 
         private bool Pings(string ip)
         {

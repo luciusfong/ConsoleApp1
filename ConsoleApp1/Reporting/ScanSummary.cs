@@ -70,6 +70,46 @@ namespace DeviceScanner.Reporting
             reportLog($"");
             reportLog($"===== SUMMARY: {r.Profile.Name} =====");
 
+            // ---------- Windows spec ----------
+
+            reportLog("");
+            reportLog("-- Windows spec (golden image, check only) --");
+
+            if (r.WindowsSpec == null)
+            {
+                reportLog("  NOT RUN");
+                notRun.Add("Windows spec");
+            }
+            else
+            {
+                string lastGroup = null;
+                foreach (var s in r.WindowsSpec.Items)
+                {
+                    if (s.Group != lastGroup)
+                    {
+                        reportLog($"  [{s.Group}]");
+                        lastGroup = s.Group;
+                    }
+
+                    string line = $"    {Tag(s.Status),-5} {s.Name,-40} {s.Actual}";
+                    if (s.Status != CheckStatus.Pass && s.Expected.Length > 0)
+                        line += $"  (expected {s.Expected})";
+                    if (s.Detail.Length > 0)
+                        line += $"  {s.Detail}";
+                    reportLog(line);
+
+                    foreach (var n in s.Notes)
+                        reportLog($"          {n}");
+                }
+
+                reportLog(
+                    $"  Windows spec: {r.WindowsSpec.Items.Count - r.WindowsSpec.Failures - r.WindowsSpec.Warnings} passed, " +
+                    $"{r.WindowsSpec.Failures} failed, {r.WindowsSpec.Warnings} warning(s) of {r.WindowsSpec.Items.Count}");
+
+                failures += r.WindowsSpec.Failures;
+                warnings += r.WindowsSpec.Warnings;
+            }
+
             // ---------- devices ----------
 
             reportLog("");

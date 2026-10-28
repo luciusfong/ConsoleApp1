@@ -10,7 +10,7 @@ namespace DeviceScanner.Scanning
     {
         public const string Zmc = "ZMC";
 
-        public static IReadOnlyList<DeviceProbe> Build() => new[]
+        public static IReadOnlyList<DeviceProbe> Build(ScanConfig cfg) => new[]
         {
             new DeviceProbe("CL3 (Keyence)", ip =>
             {
@@ -27,7 +27,8 @@ namespace DeviceScanner.Scanning
             new DeviceProbe("Camera GigE", ip =>
             {
                 var d = new MVC_GenTL();
-                return ProbeHelpers.Run(() => d.OpenDevice("Scan", ip), () => { if (d.IsConnected) d.CloseDevice(); });
+                var r = ProbeHelpers.Run(() => d.OpenDevice("Scan", ip), () => { if (d.IsConnected) d.CloseDevice(); });
+                return r.Found ? CameraNic(ip, r, cfg.CameraNicPnpId) : r;
             }),
             new DeviceProbe(Zmc, ip =>
             {
@@ -35,5 +36,16 @@ namespace DeviceScanner.Scanning
                 return ProbeHelpers.Run(() => zmc.Open(ip), () => zmc.Close());
             }),
         };
+
+        /// <summary>Every camera must be reached through the required NIC (PCI\VEN_8086&amp;DEV_1521 = Intel I350), else FAIL.</summary>
+        private static ProbeResult CameraNic(string ip, ProbeResult opened, string requiredPnp)
+        {
+            var nic = NicRoute.ForIp(ip);
+            if (nic == null)
+                return ProbeResult.Rejected($"camera found but its local NIC could not be identified (required {requiredPnp})");
+            if (nic.PnpId.IndexOf(requiredPnp, StringComparison.OrdinalIgnoreCase) < 0)
+                return ProbeResult.Rejected($"camera on wrong NIC: {nic.Connection} / {nic.Description} [{nic.ShortPnpId}], required {requiredPnp}");
+            return opened.WithNote($"via {nic.Connection} / {nic.Description} [{nic.ShortPnpId}]");   // Ok or Busy, right NIC
+        }
     }
 }

@@ -12,9 +12,11 @@ namespace DeviceScanner.Scanning
         public string Ip { get; set; }
         public string DeviceName { get; set; }     // null = nothing matched
         public ProbeStatus? Status { get; set; }
+        public string Detail { get; set; } = "";   // reason when a recognised device was rejected
 
         public override string ToString() =>
-            $"{Ip,-15} {(DeviceName == null ? "NOTHING MATCHED" : $"{DeviceName} [{Status.ToString().ToUpper()}]")}";
+            $"{Ip,-15} {(DeviceName == null ? "NOTHING MATCHED" : $"{DeviceName} [{Status.ToString().ToUpper()}]")}" +
+            (string.IsNullOrEmpty(Detail) ? "" : "  " + Detail);
     }
 
     internal sealed class IpScanReport
@@ -50,12 +52,19 @@ namespace DeviceScanner.Scanning
                 {
                     var r = probe.Run(ip);
                     _log($"{ip,-15} {probe.Name,-14} -> {r}");
-                    if (!r.Found) continue;
+                    if (!r.Found && !r.Identified) continue;
 
                     entry.DeviceName = probe.Name;
                     entry.Status = r.Status;
+                    entry.Detail = r.Identified ? r.Message : (r.Note ?? "");
                     if (probe.Name == IpProbes.Zmc && r.Status == ProbeStatus.Ok) report.ZmcIp = ip;
                     break;
+                }
+                // always show which local NIC reaches this host (cameras: flag if not the required NIC)
+                if (entry.Detail.IndexOf("[PCI", StringComparison.OrdinalIgnoreCase) < 0)
+                {
+                    string note = NicRoute.Note(ip, entry.DeviceName == "Camera GigE" ? _cfg.CameraNicPnpId : null);
+                    entry.Detail = string.IsNullOrEmpty(entry.Detail) ? note : entry.Detail + "; " + note;
                 }
                 report.Entries.Add(entry);
             }

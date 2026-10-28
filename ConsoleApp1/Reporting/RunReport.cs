@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using DeviceScanner.Profiles;
 using DeviceScanner.Scanning;
+using DeviceScanner.WindowsSpec;
 
 namespace DeviceScanner.Reporting
 {
@@ -30,6 +31,7 @@ namespace DeviceScanner.Reporting
     internal sealed class RunReport
     {
         public MachineProfile Profile { get; }
+        public SpecReport WindowsSpec { get; set; }            // null = not run
         public List<DeviceCheck> Devices { get; } = new List<DeviceCheck>();
         public IpScanReport DiscoveredIp { get; set; }         // null = discovery not run
         public ComScanReport DiscoveredCom { get; set; }
