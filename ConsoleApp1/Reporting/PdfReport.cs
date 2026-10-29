@@ -7,6 +7,7 @@ using DeviceScanner.Scanning;
 using DeviceScanner.Utils;
 using iText.IO.Font;
 using iText.IO.Font.Constants;
+using iText.IO.Font.Otf;
 using iText.Kernel.Colors;
 using iText.Kernel.Font;
 using iText.Kernel.Pdf;
@@ -14,6 +15,7 @@ using iText.Layout;
 using iText.Layout.Borders;
 using iText.Layout.Element;
 using iText.Layout.Properties;
+using iText.Layout.Splitting;
 
 namespace DeviceScanner.Reporting
 {
@@ -126,7 +128,7 @@ namespace DeviceScanner.Reporting
 
         private void SpecTable(Document doc, RunReport r)
         {
-            var t = DataTable(new float[] { 10, 14, 20, 18, 16, 22 },
+            var t = DataTable(new float[] { 9, 10, 18, 13, 13, 37 },
                 L.T("col.status"), L.T("col.group"), L.T("col.check"), L.T("col.actual"), L.T("col.expected"), L.T("col.detail"));
             int row = 0;
             foreach (var s in r.WindowsSpec.Items)
@@ -275,9 +277,13 @@ namespace DeviceScanner.Reporting
             .Add(new Paragraph(label).SetFontSize(7).SetFontColor(Muted).SetMarginBottom(1))
             .Add(new Paragraph(value).SetFont(_bold).SetFontSize(9));
 
+        /// <summary>
+        /// Fixed layout: the columns keep their widths, so one long path cannot widen the table past the page edge;
+        /// text in a cell wraps instead.
+        /// </summary>
         private Table DataTable(float[] widths, params string[] headers)
         {
-            var t = new Table(UnitValue.CreatePercentArray(widths)).UseAllAvailableWidth().SetMarginTop(4);
+            var t = new Table(UnitValue.CreatePercentArray(widths)).UseAllAvailableWidth().SetFixedLayout().SetMarginTop(4);
             foreach (string h in headers)
                 t.AddHeaderCell(Plain().SetBackgroundColor(HeadBg).SetBorderBottom(new SolidBorder(Rule, 0.75f)).SetPadding(4)
                     .Add(new Paragraph(h).SetFont(_bold).SetFontSize(7.5f).SetFontColor(Muted)));
@@ -287,7 +293,20 @@ namespace DeviceScanner.Reporting
         private void Row(Table t, int index, Tone tone, string tag, params string[] cells)
         {
             t.AddCell(BodyCell(index).Add(new Paragraph().Add(Badge(tone, tag, 7))));
-            foreach (string c in cells) t.AddCell(BodyCell(index).Add(new Paragraph(c ?? "")));
+            foreach (string c in cells) t.AddCell(BodyCell(index).Add(new Paragraph(c ?? "").SetSplitCharacters(PathBreaks.Instance)));
+        }
+
+        /// <summary>File paths have no spaces: also allow a line break after \ / _ and . so they wrap at a folder or word.</summary>
+        private sealed class PathBreaks : ISplitCharacters
+        {
+            public static readonly PathBreaks Instance = new PathBreaks();
+            private readonly DefaultSplitCharacters _default = new DefaultSplitCharacters();
+
+            public bool IsSplitCharacter(GlyphLine text, int glyphPos)
+            {
+                int c = text.Get(glyphPos).GetUnicode();
+                return c == '\\' || c == '/' || c == '_' || c == '.' || _default.IsSplitCharacter(text, glyphPos);
+            }
         }
 
         private static Cell BodyCell(int row)
