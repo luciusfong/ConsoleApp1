@@ -68,6 +68,20 @@ namespace DeviceScanner.Utils
             ["ui.openLog"]       = new[] { "Open log file", "打开日志文件" },
             ["ui.openPdf"]       = new[] { "Open PDF report", "打开 PDF 报告" },
             ["ui.close"]         = new[] { "Close", "关闭" },
+            ["ui.fixDrivers"]    = new[] { "Install missing drivers ({0})", "安装缺少的驱动（{0}）" },
+
+            // ----- fixing missing drivers -----
+            ["fix.needAdmin"]    = new[] { "Installing drivers needs administrator rights.\n\nClose the scanner, start it again and choose Yes on the Windows prompt.",
+                                           "安装驱动需要管理员权限。\n\n请关闭检测程序后重新启动，并在 Windows 提示中选择“是”。" },
+            ["fix.pickPackage"]  = new[] { "{0} is not next to the scanner - select the driver package", "检测程序目录下没有 {0}，请选择驱动包" },
+            ["fix.confirm"]      = new[] { "Install {0} missing driver(s) from\n{1}?\n\n{2}\n\nNetwork adapters may drop out for a few seconds while their driver is installed.",
+                                           "从以下驱动包安装 {0} 个缺少的驱动？\n{1}\n\n{2}\n\n安装网卡驱动时，网络可能会中断几秒钟。" },
+            ["fix.running"]      = new[] { "Installing drivers...", "正在安装驱动……" },
+            ["fix.done"]         = new[] { "{0} of {1} missing driver(s) are now in the driver store.", "{1} 个缺少的驱动中，已有 {0} 个安装到驱动库。" },
+            ["fix.notInPackage"] = new[] { "not in the driver package", "驱动包中没有此驱动" },
+            ["fix.notAdded"]     = new[] { "still not in the driver store", "仍未出现在驱动库中" },
+            ["fix.reboot"]       = new[] { "Restart the PC to finish the installation.", "请重启电脑以完成安装。" },
+            ["fix.rescan"]       = new[] { "Run the scan again so the report shows the new state.", "请重新运行检测，以便报告显示最新状态。" },
             ["ui.quitRunning"]   = new[] { "A check is still running and cannot be stopped half way.\nQuit anyway? No report will be saved.",
                                            "检测仍在进行，无法中途停止。\n仍要退出吗？将不会保存报告。" },
 

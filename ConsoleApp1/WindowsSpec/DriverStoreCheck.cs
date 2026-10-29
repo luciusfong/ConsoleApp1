@@ -102,6 +102,9 @@ namespace DeviceScanner.WindowsSpec
 
         // ---------- driver store ----------
 
+        /// <summary>Is the INF in the driver store now (used after DriverInstaller ran).</summary>
+        public static bool InStore(string inf) => ReadStore(out _)?.ContainsKey(inf) == true;
+
         /// <summary>inf name -> FileRepository folders holding it (several versions can be staged). null = not readable.</summary>
         private static Dictionary<string, List<string>> ReadStore(out string error)
         {

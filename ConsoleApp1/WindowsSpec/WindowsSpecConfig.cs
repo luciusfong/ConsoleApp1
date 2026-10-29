@@ -59,6 +59,9 @@ namespace DeviceScanner.WindowsSpec
         public string ReceiveBuffers { get; } = "2048";
         public string TransmitBuffers { get; } = "2048";
 
+        // ----- driver package for the "Install missing drivers" button (zip of DriverStore\FileRepository folders, next to the exe) -----
+        public string DriverPackage { get; } = "drivers.zip";
+
         // ----- drivers that must be in the driver store, paired with the module that needs them -----
         // Uses: "*" = every machine | "com" = profile has any com.expect device | "gantry" = profile has home.programs
         //       | otherwise a device name from the profile (ip.expect / com.expect, e.g. "Camera GigE", "CL3 (Keyence)").

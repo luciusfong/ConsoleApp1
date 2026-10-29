@@ -2,11 +2,13 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
+using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Windows.Forms;
 using DeviceScanner.Reporting;
 using DeviceScanner.Utils;
+using DeviceScanner.WindowsSpec;
 
 namespace DeviceScanner.UI
 {
@@ -44,16 +46,19 @@ namespace DeviceScanner.UI
             Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Both, WordWrap = false, Dock = DockStyle.Fill,
             Font = new Font("Consolas", 8.5f), BackColor = Color.White, Visible = false,
         };
-        private readonly Button _toggleLog, _openPdf, _openLog, _close;
+        private readonly Button _toggleLog, _openPdf, _fixDrivers, _openLog, _close;
         private readonly System.Windows.Forms.Timer _tick = new System.Windows.Forms.Timer { Interval = 200 };
 
         private Stopwatch _clock;
         private int _logShown;
         private volatile bool _running;
         private ScanFiles _files;
+        private readonly RunReport _report;
+        private List<string> _missingDrivers = new List<string>();
 
         public ScanWindow(RunReport report, IEnumerable<Module> order, RunLog log, Action<ScanWindow> work)
         {
+            _report = report;
             _log = log;
             _work = work;
 
@@ -84,8 +89,11 @@ namespace DeviceScanner.UI
             _openPdf = Button(L.T("ui.openPdf"), (s, e) => Open(_files?.PdfPath));
             _openLog = Button(L.T("ui.openLog"), (s, e) => Open(_files?.LogPath));
             _toggleLog = Button(L.T("ui.showLog"), (s, e) => ToggleLog());
+            _fixDrivers = Button("", (s, e) => FixDrivers());
+            _fixDrivers.ForeColor = FailFg;
+            _fixDrivers.Visible = false;
             _openPdf.Enabled = _openLog.Enabled = false;
-            bar.Controls.AddRange(new Control[] { _close, _openPdf, _openLog, _toggleLog });
+            bar.Controls.AddRange(new Control[] { _close, _openPdf, _fixDrivers, _openLog, _toggleLog });
             Controls.Add(bar);
 
             _tick.Tick += (s, e) => ShowNewLog();
@@ -156,6 +164,7 @@ namespace DeviceScanner.UI
             _openPdf.Enabled = files.PdfPath != null;
             _openLog.Enabled = files.LogPath != null;
             if (_openPdf.Enabled) _openPdf.Focus();
+            ShowFixDrivers(DriverInstaller.Missing(_report.WindowsSpec));
             Activate();
         }));
 
@@ -300,6 +309,88 @@ namespace DeviceScanner.UI
             // the checks cannot be interrupted half way (a homing program keeps running on the controller anyway)
             if (!Dialogs.Confirm(L.T("ui.quitRunning"), caution: true, owner: this)) { e.Cancel = true; return; }
             Environment.Exit(1);
+        }
+
+        // ---------- fixing ----------
+
+        private void ShowFixDrivers(List<string> missing)
+        {
+            _missingDrivers = missing;
+            _fixDrivers.Text = L.T("ui.fixDrivers", missing.Count);
+            _fixDrivers.Visible = missing.Count > 0;
+        }
+
+        /// <summary>Installs the drivers the Windows spec found MISSING from the driver package, on a worker thread.</summary>
+        private void FixDrivers()
+        {
+            if (_running || _missingDrivers.Count == 0) return;
+            if (!Elevation.IsAdmin()) { Dialogs.Error(L.T("fix.needAdmin"), this); return; }
+
+            var spec = new WindowsSpecConfig();
+            string package = DriverInstaller.FindPackage(spec) ?? PickPackage(spec);
+            if (package == null) return;
+
+            var missing = _missingDrivers.ToList();
+            if (!Dialogs.Confirm(L.T("fix.confirm", missing.Count, package, string.Join(", ", missing)), caution: true, owner: this))
+                return;
+
+            _running = true;
+            _fixDrivers.Enabled = false;
+            _subject.Text = L.T("fix.running");
+            _subject.ForeColor = Ink;
+            _status.ForeColor = Muted;
+            _clock = Stopwatch.StartNew();
+            _spinner.Start();
+            _tick.Start();
+            int logStart = _log.Count;
+            _log.Add("");
+            _log.Add($"===== {L.T("ui.fixDrivers", missing.Count)} =====");
+
+            new Thread(() =>
+            {
+                var outcome = DriverInstaller.Install(missing, package, _log.Add);
+                SaveFixLog(logStart);
+                BeginInvoke(new Action(() => FixDone(missing, outcome)));
+            }) { IsBackground = true, Name = "drivers" }.Start();
+        }
+
+        private void FixDone(List<string> tried, DriverInstaller.Outcome outcome)
+        {
+            _running = false;
+            ShowNewLog();
+            _clock = null;
+            _elapsed.Text = "";
+            _tick.Stop();
+
+            bool ok = outcome.Problems.Count == 0;
+            _subject.Text = L.T("fix.done", outcome.Installed.Count, tried.Count);
+            _subject.ForeColor = ok ? PassFg : FailFg;
+            _spinner.Stop(ok ? PassFg : FailFg, ok ? "✓" : "✕");
+            _status.Text = L.T("fix.rescan");
+
+            ShowFixDrivers(tried.Except(outcome.Installed, StringComparer.OrdinalIgnoreCase).ToList());
+            _fixDrivers.Enabled = true;
+
+            var message = new List<string> { L.T("fix.done", outcome.Installed.Count, tried.Count) };
+            if (!ok) message.Add(string.Join("\n", outcome.Problems.Select(p => "• " + p)));
+            if (outcome.RebootNeeded) message.Add(L.T("fix.reboot"));
+            message.Add(L.T("fix.rescan"));
+            if (ok) Dialogs.Inform(string.Join("\n\n", message), this);
+            else Dialogs.Error(string.Join("\n\n", message), this);
+        }
+
+        private string PickPackage(WindowsSpecConfig spec)
+        {
+            using (var dlg = new OpenFileDialog { Title = L.T("fix.pickPackage", spec.DriverPackage), Filter = "Zip (*.zip)|*.zip" })
+                return dlg.ShowDialog(this) == DialogResult.OK ? dlg.FileName : null;
+        }
+
+        /// <summary>The log file was written when the scan ended: the install log is added to it.</summary>
+        private void SaveFixLog(int from)
+        {
+            if (_files?.LogPath == null) return;
+            try { File.AppendAllLines(_files.LogPath, _log.Since(from)); }
+            catch (Exception ex) { _log.Add("    log file not updated: " + ex.Message); }
         }
 
         private void Open(string path)
