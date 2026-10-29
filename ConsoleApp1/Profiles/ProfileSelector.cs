@@ -1,12 +1,14 @@
 using System;
 using System.IO;
 using System.Linq;
+using DeviceScanner.Utils;
 
 namespace DeviceScanner.Profiles
 {
     /// <summary>
     /// Chooses which profile to run: a path/name on the command line, otherwise the files in
-    /// the Profiles folder next to the exe (asks if there is more than one).
+    /// the Profiles folder next to the exe (a dialog asks if there is more than one).
+    /// Problems are shown in a dialog too, since the run stops there.
     /// </summary>
     internal static class ProfileSelector
     {
@@ -22,12 +24,13 @@ namespace DeviceScanner.Profiles
                 if (path == null) return null;
 
                 var profile = ProfileLoader.Load(path);
-                log($"Profile: {profile.Name}  ({path})");
+                log(L.T("profile.loaded", profile.Name, path));
                 return profile;
             }
             catch (Exception ex) when (ex is FormatException || ex is IOException)
             {
-                log("Profile error: " + ex.Message);
+                log(L.T("profile.error", ex.Message));
+                Dialogs.Error(L.T("profile.error", ex.Message));
                 return null;
             }
         }
@@ -52,21 +55,16 @@ namespace DeviceScanner.Profiles
             {
                 string sample = Path.Combine(dir, "sd1x.profile");
                 File.WriteAllText(sample, SampleProfile.Text);
-                log($"No profiles found. Wrote an example to {sample}");
-                log("Edit it for this machine (or copy it for another one), then run again.");
+                log(L.T("profile.none", sample));
+                log(L.T("profile.editHint"));
+                Dialogs.Inform(L.T("profile.none", sample) + "\n\n" + L.T("profile.editHint"));
                 return null;
             }
 
             if (files.Length == 1) return files[0];
 
-            log("Profiles:");
-            for (int i = 0; i < files.Length; i++) log($"  {i + 1}. {Path.GetFileNameWithoutExtension(files[i])}");
-            Console.Write("Choose a profile number: ");
-
-            if (int.TryParse(Console.ReadLine(), out int n) && n >= 1 && n <= files.Length) return files[n - 1];
-
-            log("Invalid choice.");
-            return null;
+            int n = Dialogs.Choose(L.T("profile.choose"), files.Select(Path.GetFileNameWithoutExtension).ToList());
+            return n < 0 ? null : files[n];
         }
     }
 }

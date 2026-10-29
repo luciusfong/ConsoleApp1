@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Net.NetworkInformation;
 using System.Threading.Tasks;
+using DeviceScanner.Utils;
 
 namespace DeviceScanner.Scanning
 {
@@ -15,7 +16,7 @@ namespace DeviceScanner.Scanning
         public string Detail { get; set; } = "";   // reason when a recognised device was rejected
 
         public override string ToString() =>
-            $"{Ip,-15} {(DeviceName == null ? "NOTHING MATCHED" : $"{DeviceName} [{Status.ToString().ToUpper()}]")}" +
+            $"{Ip,-15} {(DeviceName == null ? L.T("sum.nothing") : $"{DeviceName} [{Status.ToString().ToUpper()}]")}" +
             (string.IsNullOrEmpty(Detail) ? "" : "  " + Detail);
     }
 

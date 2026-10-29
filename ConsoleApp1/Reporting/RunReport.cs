@@ -31,13 +31,17 @@ namespace DeviceScanner.Reporting
     internal sealed class RunReport
     {
         public MachineProfile Profile { get; }
+        public string UserName { get; set; } = "";             // typed in at the start of the run
+        public DateTime StartedAt { get; set; } = DateTime.Now;
         public SpecReport WindowsSpec { get; set; }            // null = not run
         public List<DeviceCheck> Devices { get; } = new List<DeviceCheck>();
         public IpScanReport DiscoveredIp { get; set; }         // null = discovery not run
         public ComScanReport DiscoveredCom { get; set; }
         public HomeResult Home { get; set; }                   // null = not run
         public bool IoRun { get; set; }
+        public string IoError { get; set; }                    // IO test was wanted but could not start (e.g. ZMC not reachable)
         public List<IoTestResult> Io { get; } = new List<IoTestResult>();
+        public Dictionary<Module, TimeSpan> Durations { get; } = new Dictionary<Module, TimeSpan>();
 
         public RunReport(MachineProfile profile) { Profile = profile; }
     }
