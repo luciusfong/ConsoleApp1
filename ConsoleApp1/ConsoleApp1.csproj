@@ -199,6 +199,7 @@
     <Compile Include="Scanning\IpProbes.cs" />
     <Compile Include="Scanning\IpScanner.cs" />
     <Compile Include="Scanning\NicRoute.cs" />
+    <Compile Include="Scanning\PcAddressFixer.cs" />
     <Compile Include="Scanning\ProbeHelpers.cs" />
     <Compile Include="Scanning\ProbeResult.cs" />
     <Compile Include="Scanning\ProfileVerifier.cs" />

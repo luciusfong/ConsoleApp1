@@ -50,16 +50,19 @@ namespace DeviceScanner.Scanning
             });
             if (nic == null) return null;
 
-            string pnp = null;
+            return new LocalNic { Description = nic.Description, Connection = nic.Name, PnpId = PnpIdOf(nic.Id) };
+        }
+
+        /// <summary>PnP instance id (PCI\VEN_...) of an adapter by its NetworkInterface.Id, or "" if unknown.</summary>
+        public static string PnpIdOf(string interfaceId)
+        {
             try
             {
                 using (var k = RegistryKey.OpenBaseKey(RegistryHive.LocalMachine, RegistryView.Registry64)
-                                          .OpenSubKey($@"{NetworkClass}\{nic.Id}\Connection", false))
-                    pnp = k?.GetValue("PnPInstanceId") as string;
+                                          .OpenSubKey($@"{NetworkClass}\{interfaceId}\Connection", false))
+                    return k?.GetValue("PnPInstanceId") as string ?? "";
             }
-            catch { }
-
-            return new LocalNic { Description = nic.Description, Connection = nic.Name, PnpId = pnp ?? "" };
+            catch { return ""; }
         }
 
         /// <summary>

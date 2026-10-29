@@ -195,6 +195,14 @@ namespace DeviceScanner.Reporting
                 foreach (var f in r.DiscoveredCom.Found.OrderBy(x => x.Name))
                     Row(t, row++, Tone.Pass, L.T("tag.pass"), "COM", f.Port, f.Name, "");
 
+            // PC addresses discovery set to the profile (or could not)
+            foreach (var f in r.AddressFixes)
+            {
+                Tone tone = f.Status == CheckStatus.Pass ? Tone.Pass : f.Status == CheckStatus.Fail ? Tone.Fail : Tone.Warn;
+                string tag = f.Status == CheckStatus.Pass ? L.T("tag.fixed") : TagOf(f.Status);
+                Row(t, row++, tone, tag, "PC " + f.Kind, (f.From.Length > 0 ? f.From + " -> " : "") + f.To, f.Target, f.Detail);
+            }
+
             doc.Add(t);
 
             if (r.DiscoveredCom != null)

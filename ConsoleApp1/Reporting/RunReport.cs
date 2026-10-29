@@ -18,6 +18,17 @@ namespace DeviceScanner.Reporting
         public string Detail { get; set; } = "";
     }
 
+    /// <summary>A PC-side address discovery set to match the profile (NIC IP or COM port number), or the conflict that stopped it.</summary>
+    internal sealed class AddressFix
+    {
+        public string Kind { get; set; }         // "NIC" or "COM"
+        public string Target { get; set; }       // adapter name, or device name
+        public string From { get; set; } = "";
+        public string To { get; set; } = "";
+        public CheckStatus Status { get; set; }  // Pass = changed, Unverified = changed but not confirmed, Fail = conflict / not changed
+        public string Detail { get; set; } = "";
+    }
+
     internal sealed class HomeResult
     {
         public bool Success { get; set; }
@@ -37,6 +48,7 @@ namespace DeviceScanner.Reporting
         public List<DeviceCheck> Devices { get; } = new List<DeviceCheck>();
         public IpScanReport DiscoveredIp { get; set; }         // null = discovery not run
         public ComScanReport DiscoveredCom { get; set; }
+        public List<AddressFix> AddressFixes { get; } = new List<AddressFix>();   // PC-side changes made by discovery
         public HomeResult Home { get; set; }                   // null = not run
         public bool IoRun { get; set; }
         public string IoError { get; set; }                    // IO test was wanted but could not start (e.g. ZMC not reachable)

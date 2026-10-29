@@ -116,6 +116,64 @@ namespace DeviceScanner.WindowsSpec
             }
         }
 
+        // ---------- NIC advanced + power management settings ----------
+
+        /// <summary>
+        /// Sets each failed advanced property with Set-NetAdapterAdvancedProperty (by registry keyword, so it works with
+        /// a Chinese driver UI) and unchecks the power-management boxes through root\WMI; each adapter is restarted once
+        /// so the advanced values take effect (its link drops for a few seconds). Every value is read back.
+        /// </summary>
+        public static void FixNicSettings(IEnumerable<NicSettingFix> fixes, Outcome outcome, Action<string> log)
+        {
+            foreach (var adapter in fixes.GroupBy(f => f.Connection))
+            {
+                string n = Ps(adapter.Key);
+                var script = new StringBuilder("$ErrorActionPreference='Stop'; $ProgressPreference='SilentlyContinue'\n");
+                var advanced = adapter.Where(f => f.Keyword != null).ToList();
+                foreach (var f in advanced)
+                    script.Append($"try {{ Set-NetAdapterAdvancedProperty -Name {n} -RegistryKeyword {Ps(f.Keyword)} -RegistryValue {Ps(f.Value)} -NoRestart; " +
+                                  $"'A|{f.Keyword}|' + ((Get-NetAdapterAdvancedProperty -Name {n} -RegistryKeyword {Ps(f.Keyword)}).RegistryValue -join ',') }} " +
+                                  $"catch {{ 'E|{f.Keyword}|' + $_.Exception.Message }}\n");
+
+                // "turn off" last: unchecking it greys out the two wake boxes
+                foreach (var f in adapter.Where(x => x.PowerClass != null).OrderBy(x => x.PowerClass == "MSPower_DeviceEnable" ? 1 : 0))
+                {
+                    string match = f.PowerClass.StartsWith("MSPower_", StringComparison.Ordinal)
+                        ? $"$_.InstanceName.StartsWith({Ps(f.PowerInstance)}, [StringComparison]::OrdinalIgnoreCase)"
+                        : $"$_.InstanceName -eq {Ps(f.PowerInstance)}";
+                    script.Append($"try {{ $i = @(Get-CimInstance -Namespace root/wmi -ClassName {f.PowerClass} | Where-Object {{ {match} }}); " +
+                                  $"if ($i.Count -eq 0) {{ throw 'no {f.PowerClass} instance for this adapter' }}; " +
+                                  $"foreach ($x in $i) {{ $x.{f.PowerProperty} = $false; Set-CimInstance -InputObject $x }}; " +
+                                  $"'P|{f.PowerClass}|' + ((@(Get-CimInstance -Namespace root/wmi -ClassName {f.PowerClass} | Where-Object {{ {match} }}) | ForEach-Object {{ $_.{f.PowerProperty} }}) -join ',') }} " +
+                                  $"catch {{ 'E|{f.PowerClass}|' + $_.Exception.Message }}\n");
+                }
+
+                if (advanced.Count > 0) script.Append($"try {{ Restart-NetAdapter -Name {n}; 'R|restart|ok' }} catch {{ 'E|restart|' + $_.Exception.Message }}\n");
+
+                log($"    {adapter.Key}: {adapter.Count()} setting(s)");
+                Run("powershell.exe", "-NoProfile -NonInteractive -ExecutionPolicy Bypass -EncodedCommand " +
+                    Convert.ToBase64String(Encoding.Unicode.GetBytes(script.ToString())), log, out _, out List<string> lines);
+
+                // results by keyword / WMI class
+                var result = lines.Select(l => l.Split(new[] { '|' }, 3)).Where(p => p.Length == 3)
+                                  .GroupBy(p => p[1]).ToDictionary(g => g.Key, g => g.Last());
+                foreach (var f in adapter)
+                {
+                    string key = f.Keyword ?? f.PowerClass;
+                    string want = f.Keyword != null ? f.Value : "False";
+                    if (!result.TryGetValue(key, out var r)) { outcome.Problems.Add($"{f}: no result from PowerShell"); continue; }
+                    if (r[0] == "E") { outcome.Problems.Add($"{f}: {r[2]}"); continue; }
+                    if (r[2].Split(',').All(v => string.Equals(v.Trim(), want, StringComparison.OrdinalIgnoreCase))) outcome.Installed.Add(f.ToString());
+                    else outcome.Problems.Add($"{f}: still {r[2]} (wanted {want})");
+                }
+                if (result.TryGetValue("restart", out var restart) && restart[0] == "E")
+                    outcome.Problems.Add($"{adapter.Key}: restart the adapter (or the PC) to apply: {restart[2]}");
+            }
+        }
+
+        /// <summary>A PowerShell single-quoted string literal.</summary>
+        private static string Ps(string s) => "'" + (s ?? "").Replace("'", "''") + "'";
+
         // ---------- helpers ----------
 
         /// <summary>System32 as a 64-bit process sees it (a 32-bit process is redirected to SysWOW64, which has no pnputil).</summary>
@@ -125,7 +183,9 @@ namespace DeviceScanner.WindowsSpec
                 : Environment.SystemDirectory;
 
         /// <summary>Runs a tool and logs its output; its last output line comes back in <paramref name="output"/>.</summary>
-        private static int Run(string file, string args, Action<string> log, out string output)
+        private static int Run(string file, string args, Action<string> log, out string output) => Run(file, args, log, out output, out _);
+
+        private static int Run(string file, string args, Action<string> log, out string output, out List<string> lines)
         {
             var oem = Encoding.GetEncoding(CultureInfo.CurrentCulture.TextInfo.OEMCodePage);
             var psi = new ProcessStartInfo(file, args)
@@ -137,7 +197,7 @@ namespace DeviceScanner.WindowsSpec
             using (var p = Process.Start(psi))
             {
                 var stderr = p.StandardError.ReadToEndAsync();
-                var lines = p.StandardOutput.ReadToEnd().Split('\n').Select(l => l.Trim()).Where(l => l.Length > 0).ToList();
+                lines = p.StandardOutput.ReadToEnd().Split('\n').Select(l => l.Trim()).Where(l => l.Length > 0).ToList();
                 p.WaitForExit();
                 lines.AddRange(stderr.Result.Split('\n').Select(l => l.Trim()).Where(l => l.Length > 0));
                 foreach (string l in lines) log("        " + l);

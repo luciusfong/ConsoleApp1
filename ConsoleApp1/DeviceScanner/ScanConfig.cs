@@ -16,6 +16,8 @@ namespace DeviceScanner
             new HashSet<string> { "ITV regulator", "OPT light", "LC18 light" };
         /// <summary>Every GigE camera must be reached through this NIC (Intel I350), else the camera check FAILS.</summary>
         public string CameraNicPnpId { get; } = @"PCI\VEN_8086&DEV_1521";
+        /// <summary>Discovery gives a wired NIC this host number (192.168.x.200 /24) when a profile subnet has no NIC; next free one if taken.</summary>
+        public int PcHostOctet { get; } = 200;
 
         // ----- controller init -----
         public int InitTimeoutMs { get; } = 10000;           // wait for sysstate == 1 after RUN <init program>

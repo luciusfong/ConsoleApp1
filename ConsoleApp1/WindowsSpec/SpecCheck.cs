@@ -25,6 +25,9 @@ namespace DeviceScanner.WindowsSpec
 
         protected abstract void Execute();
 
+        /// <summary>The report this check writes to (for checks that also record what the fix button can change).</summary>
+        protected SpecReport Report => _report;
+
         protected SpecItem Add(string group, string name, string expected, string actual, CheckStatus status, string detail = "")
         {
             var item = new SpecItem

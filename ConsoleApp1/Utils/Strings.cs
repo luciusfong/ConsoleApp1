@@ -1,4 +1,4 @@
-﻿using System.Collections.Generic;
+using System.Collections.Generic;
 
 namespace DeviceScanner.Utils
 {
@@ -18,6 +18,7 @@ namespace DeviceScanner.Utils
             ["tag.notRun"] = new[] { "NOT RUN", "未运行" },
             ["tag.busy"] = new[] { "BUSY", "占用" },
             ["tag.na"] = new[] { "N/A", "不适用" },
+            ["tag.fixed"] = new[] { "FIXED", "已修正" },
 
             // ----- dialog buttons -----
             ["btn.yes"]    = new[] { "Yes", "是" },
@@ -30,8 +31,8 @@ namespace DeviceScanner.Utils
                                            "请输入执行本次检测的人员姓名（将显示在报告中）。" },
             ["prompt.spec"]      = new[] { "Run Windows spec check (read only; the Chinese file-name scan can take a few minutes)?",
                                            "运行 Windows 规格检查？（只读；中文文件名扫描可能需要几分钟）" },
-            ["prompt.discovery"] = new[] { "Also run full discovery (ping sweep + COM scan, slow)?",
-                                           "同时运行完整设备发现？（Ping 扫描 + COM 扫描，较慢）" },
+            ["prompt.discovery"] = new[] { "Also run full discovery (ping sweep + COM scan, slow)? This PC's network and COM port addresses are set to match the profile; devices are not changed.",
+                                           "同时运行完整设备发现？（Ping 扫描 + COM 扫描，较慢）本机网卡地址和 COM 口号将按配置文件修正；不会更改设备本身。" },
             ["prompt.home"]      = new[] { "Home gantry ({0})? Make sure the gantry is clear.",
                                            "龙门回原点（{0}）？请确认龙门周围无障碍物。" },
             ["prompt.io"]        = new[] { "Run {0} discrete IO tests? Outputs will really switch (lifters, stoppers, vacuum...). Clear the machine first.",
@@ -62,23 +63,25 @@ namespace DeviceScanner.Utils
             ["ui.waitingNext"]   = new[] { "Next module...", "下一个模块……" },
             ["ui.waiting"]       = new[] { "WAITING", "等待" },
             ["ui.running"]       = new[] { "RUNNING", "进行中" },
+            ["ui.recheck"]       = new[] { "checked again after address changes", "地址修正后重新检查" },
             ["ui.more"]          = new[] { "... and {0} more (see the PDF report)", "……另有 {0} 项（见 PDF 报告）" },
             ["ui.showLog"]       = new[] { "Show log", "显示日志" },
             ["ui.hideLog"]       = new[] { "Hide log", "隐藏日志" },
             ["ui.openLog"]       = new[] { "Open log file", "打开日志文件" },
             ["ui.openPdf"]       = new[] { "Open PDF report", "打开 PDF 报告" },
             ["ui.close"]         = new[] { "Close", "关闭" },
-            ["ui.fix"]           = new[] { "Install missing ({0})", "安装缺少的项目（{0}）" },
+            ["ui.rescan"]        = new[] { "Scan again", "重新检测" },
+            ["ui.fix"]           = new[] { "Fix problems ({0})", "修复问题（{0}）" },
 
             // ----- installing missing drivers / VC++ runtime -----
-            ["fix.needAdmin"]    = new[] { "Installing drivers and the VC++ runtime needs administrator rights.\n\nClose the scanner, start it again and choose Yes on the Windows prompt.",
-                                           "安装驱动和 VC++ 运行库需要管理员权限。\n\n请关闭检测程序后重新启动，并在 Windows 提示中选择“是”。" },
+            ["fix.needAdmin"]    = new[] { "Installing drivers, the VC++ runtime and changing network settings needs administrator rights.\n\nClose the scanner, start it again and choose Yes on the Windows prompt.",
+                                           "安装驱动、VC++ 运行库和修改网卡设置需要管理员权限。\n\n请关闭检测程序后重新启动，并在 Windows 提示中选择“是”。" },
             ["fix.pickFile"]     = new[] { "{0} is not next to the scanner - select it", "检测程序目录下没有 {0}，请手动选择" },
-            ["fix.confirm"]      = new[] { "Install {0} missing item(s)?", "安装 {0} 个缺少的项目？" },
-            ["fix.nicWarning"]   = new[] { "Network adapters may drop out for a few seconds while their driver is installed.",
-                                           "安装网卡驱动时，网络可能会中断几秒钟。" },
-            ["fix.running"]      = new[] { "Installing...", "正在安装……" },
-            ["fix.done"]         = new[] { "{0} of {1} missing item(s) are now installed.", "{1} 个缺少的项目中，已安装 {0} 个。" },
+            ["fix.confirm"]      = new[] { "Fix {0} item(s)?", "修复 {0} 个项目？" },
+            ["fix.nicWarning"]   = new[] { "Network adapters drop out for a few seconds while their driver or settings change.",
+                                           "安装网卡驱动或修改网卡设置时，网络会中断几秒钟。" },
+            ["fix.running"]      = new[] { "Fixing...", "正在修复……" },
+            ["fix.done"]         = new[] { "{0} of {1} item(s) fixed.", "{1} 个项目中，已修复 {0} 个。" },
             ["fix.notInPackage"] = new[] { "not in the driver package", "驱动包中没有此驱动" },
             ["fix.notAdded"]     = new[] { "still not in the driver store", "仍未出现在驱动库中" },
             ["fix.reboot"]       = new[] { "Restart the PC to finish the installation.", "请重启电脑以完成安装。" },
@@ -106,6 +109,7 @@ namespace DeviceScanner.Utils
             ["mod.counts"]       = new[] { "{0} passed, {1} failed, {2} warning(s) of {3}", "共 {3} 项，通过 {0}，失败 {1}，警告 {2}" },
             ["mod.skipped"]      = new[] { "skipped by the operator", "操作员选择跳过" },
             ["mod.homeSummary"]  = new[] { "{0}   axes: {1}   {2:F1} s", "{0}   轴：{1}   {2:F1} 秒" },
+            ["mod.fixSummary"]   = new[] { "{0} PC address(es) set to the profile", "已按配置文件修正 {0} 个本机地址" },
             ["mod.discoverySummary"] = new[] { "{0} IP host(s), {1} COM device(s) found (not limited to the profile)",
                                                "找到 {0} 个 IP 主机、{1} 个 COM 设备（不限于配置文件）" },
 

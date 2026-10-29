@@ -72,7 +72,7 @@ namespace DeviceScanner.WindowsSpec
                 using (var key = ClassKey(a.Guid))
                 {
                     if (key == null) { Add(group, "driver key", "", "not found", CheckStatus.Unverified, "no registry key for " + a.Guid); }
-                    else foreach (var r in rules) CheckRule(group, key, r);
+                    else foreach (var r in rules) CheckRule(group, key, r, a);
                 }
 
                 CheckPower(group, a, power);
@@ -137,7 +137,7 @@ namespace DeviceScanner.WindowsSpec
 
         // ---------- advanced properties ----------
 
-        private void CheckRule(string group, RegistryKey key, Rule r)
+        private void CheckRule(string group, RegistryKey key, Rule r, Adapter a)
         {
             var seen = new List<string>();
             bool ok = true;
@@ -158,7 +158,11 @@ namespace DeviceScanner.WindowsSpec
                 }
                 seen.Add($"{kw}={v}");
                 string raw = v.Replace(" (default)", "").Trim();
-                if (!r.Accept.Contains(raw)) ok = false;
+                if (!r.Accept.Contains(raw))
+                {
+                    ok = false;
+                    Report.NicFixes.Add(new NicSettingFix { Connection = a.Connection, Label = r.Label, Keyword = kw, Value = r.Accept[0] });
+                }
             }
 
             if (seen.Count == 0)
@@ -205,10 +209,19 @@ namespace DeviceScanner.WindowsSpec
         private void CheckPower(string group, Adapter a, PowerData p)
         {
             // MSPower_* InstanceName = PNPDeviceID + "_0"; MSNdis_* InstanceName = adapter name
-            Power(group, a, "Allow computer to turn off this device", p, Find(p.TurnOff, a.PnpId, true));
-            Power(group, a, "Allow this device to wake the computer", p, Find(p.Wake, a.PnpId, true));
-            Power(group, a, "Only allow a magic packet to wake", p, Find(p.MagicOnly, a.Name, false));
+            if (Power(group, a, "Allow computer to turn off this device", p, Find(p.TurnOff, a.PnpId, true)))
+                PowerFix(a, "Allow computer to turn off this device", "MSPower_DeviceEnable", "Enable", a.PnpId);
+            if (Power(group, a, "Allow this device to wake the computer", p, Find(p.Wake, a.PnpId, true)))
+                PowerFix(a, "Allow this device to wake the computer", "MSPower_DeviceWakeEnable", "Enable", a.PnpId);
+            if (Power(group, a, "Only allow a magic packet to wake", p, Find(p.MagicOnly, a.Name, false)))
+                PowerFix(a, "Only allow a magic packet to wake", "MSNdis_DeviceWakeOnMagicPacketOnly", "EnableWakeOnMagicPacketOnly", a.Name);
         }
+
+        private void PowerFix(Adapter a, string label, string cls, string prop, string instance) =>
+            Report.NicFixes.Add(new NicSettingFix
+            {
+                Connection = a.Connection, Label = label, PowerClass = cls, PowerProperty = prop, PowerInstance = instance,
+            });
 
         private static bool? Find(Dictionary<string, bool> map, string key, bool prefix)
         {
@@ -220,16 +233,21 @@ namespace DeviceScanner.WindowsSpec
             return null;
         }
 
-        private void Power(string group, Adapter a, string label, PowerData p, bool? enabled)
+        /// <summary>Adds the item; true when the box is checked (so the fix button should uncheck it).</summary>
+        private bool Power(string group, Adapter a, string label, PowerData p, bool? enabled)
         {
             if (enabled.HasValue)
+            {
                 Add(group, label, "unchecked", enabled.Value ? "checked" : "unchecked", PassIf(!enabled.Value));
+                return enabled.Value;
+            }
             else if (p.Error != null)
                 Add(group, label, "unchecked", "unknown", CheckStatus.Unverified, p.Error);
             else if (!a.Enabled)
                 Add(group, label, "unchecked", "unknown", CheckStatus.Unverified, "adapter disabled; enable it and run again");
             else
                 Add(group, label, "unchecked", "not supported", CheckStatus.Pass, "option not offered for this adapter");
+            return false;
         }
     }
 }

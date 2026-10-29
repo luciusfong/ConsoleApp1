@@ -83,8 +83,10 @@ namespace DeviceScanner.WindowsSpec
                 "CH343SER.INF", "ch38mdrv.inf", "emports.inf",
                 "ftdibus.inf", "ftdiport.inf"),
 
+            // HD-ServoDrive.inf (old HD drive, VID_24CB&PID_0001) is not required: its INF does not match its signed
+            // catalog so Windows refuses it, and Windows 10 binds that CDC port to the inbox usbser driver anyway
             new DriverModule("Gantry servo drives (Servotronix / HD)", new[] { "gantry" },
-                "servotronix-usbcom.inf", "sd2-ftdibus.inf", "sd2-ftdiport.inf", "HD-ServoDrive.inf"),
+                "servotronix-usbcom.inf", "sd2-ftdibus.inf", "sd2-ftdiport.inf"),
 
             new DriverModule("Camera (Hikrobot MVS / GigE / U3V / frame grabbers)", new[] { "Camera GigE" },
                 "hikgevsf.inf", "mvGenICamForEthernet.inf", "MvGigEFrameGrabber.inf", "mvu3v.inf",

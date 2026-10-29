@@ -46,7 +46,10 @@ namespace DeviceScanner.UI
             Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Both, WordWrap = false, Dock = DockStyle.Fill,
             Font = new Font("Consolas", 8.5f), BackColor = Color.White, Visible = false,
         };
-        private readonly Button _toggleLog, _openPdf, _fix, _openLog, _close;
+        private readonly Button _toggleLog, _openPdf, _fix, _openLog, _rescan, _close;
+
+        /// <summary>The operator asked for another run (same operator, profile and run mode); set when the window closes.</summary>
+        public bool RescanRequested { get; private set; }
         private readonly System.Windows.Forms.Timer _tick = new System.Windows.Forms.Timer { Interval = 200 };
 
         private Stopwatch _clock;
@@ -56,6 +59,7 @@ namespace DeviceScanner.UI
         private readonly RunReport _report;
         private List<string> _missingDrivers = new List<string>();
         private bool _vcMissing;
+        private List<NicSettingFix> _nicFixes = new List<NicSettingFix>();
 
         public ScanWindow(RunReport report, IEnumerable<Module> order, RunLog log, Action<ScanWindow> work)
         {
@@ -69,7 +73,6 @@ namespace DeviceScanner.UI
             BackColor = Color.White;
             StartPosition = FormStartPosition.CenterScreen;
             FormBorderStyle = FormBorderStyle.Sizable;
-            MaximizeBox = false;
             ClientSize = new Size(720, 400);
             Icon = SystemIcons.Application;
 
@@ -87,6 +90,8 @@ namespace DeviceScanner.UI
                 Padding = new Padding(12, 10, 12, 10), BackColor = HeadBg,
             };
             _close = Button(L.T("ui.close"), (s, e) => Close());
+            _rescan = Button(L.T("ui.rescan"), (s, e) => { RescanRequested = true; Close(); });
+            _rescan.Enabled = false;
             _openPdf = Button(L.T("ui.openPdf"), (s, e) => Open(_files?.PdfPath));
             _openLog = Button(L.T("ui.openLog"), (s, e) => Open(_files?.LogPath));
             _toggleLog = Button(L.T("ui.showLog"), (s, e) => ToggleLog());
@@ -94,11 +99,18 @@ namespace DeviceScanner.UI
             _fix.ForeColor = FailFg;
             _fix.Visible = false;
             _openPdf.Enabled = _openLog.Enabled = false;
-            bar.Controls.AddRange(new Control[] { _close, _openPdf, _fix, _openLog, _toggleLog });
+            bar.Controls.AddRange(new Control[] { _close, _rescan, _openPdf, _fix, _openLog, _toggleLog });
             Controls.Add(bar);
 
             _tick.Tick += (s, e) => ShowNewLog();
             Load += (s, e) => FitHeight();
+            // rows may have grown while maximized: fit again when the window is restored
+            var lastState = WindowState;
+            Resize += (s, e) =>
+            {
+                if (WindowState == FormWindowState.Normal && lastState != FormWindowState.Normal) FitHeight();
+                lastState = WindowState;
+            };
             Shown += (s, e) => StartWork();
             FormClosing += OnClosing;
         }
@@ -136,6 +148,11 @@ namespace DeviceScanner.UI
                 row.Problems.Visible = true;
                 FitHeight();
             }
+            else if (row.Problems.Visible)          // a module checked again (Devices after discovery changed addresses)
+            {
+                row.Problems.Visible = false;
+                FitHeight();
+            }
             _subject.Text = L.T("ui.waitingNext");
             _status.Text = "";
             _elapsed.Text = "";
@@ -164,8 +181,10 @@ namespace DeviceScanner.UI
 
             _openPdf.Enabled = files.PdfPath != null;
             _openLog.Enabled = files.LogPath != null;
+            _rescan.Enabled = true;
             if (_openPdf.Enabled) _openPdf.Focus();
-            ShowFix(SpecFixer.MissingDrivers(_report.WindowsSpec), VcRuntimeCheck.Missing(_report.WindowsSpec));
+            ShowFix(SpecFixer.MissingDrivers(_report.WindowsSpec), VcRuntimeCheck.Missing(_report.WindowsSpec),
+                    _report.WindowsSpec?.NicFixes.ToList() ?? new List<NicSettingFix>());
             Activate();
         }));
 
@@ -254,11 +273,12 @@ namespace DeviceScanner.UI
             return b;
         }
 
-        /// <summary>Window height = everything docked at the edges (+ the log when it is shown).</summary>
+        /// <summary>Window height = everything docked at the edges (+ the log when it is shown). A maximized window keeps its size.</summary>
         private void FitHeight()
         {
             int edges = Controls.Cast<Control>().Where(c => c != _logBox && c.Visible).Sum(c => c.Height);
             int want = edges + (_logBox.Visible ? LogHeight : 0);
+            if (WindowState != FormWindowState.Normal) return;
             MinimumSize = new Size(560, Height - ClientSize.Height + edges);
             if (ClientSize.Height < want || !_logBox.Visible) ClientSize = new Size(ClientSize.Width, want);
         }
@@ -314,12 +334,13 @@ namespace DeviceScanner.UI
 
         // ---------- fixing ----------
 
-        /// <summary>The fix button: shown while the Windows spec found missing drivers or a missing VC++ runtime.</summary>
-        private void ShowFix(List<string> missingDrivers, bool vcMissing)
+        /// <summary>The fix button: shown while the Windows spec found missing drivers, a missing VC++ runtime or wrong NIC settings.</summary>
+        private void ShowFix(List<string> missingDrivers, bool vcMissing, List<NicSettingFix> nicFixes)
         {
             _missingDrivers = missingDrivers;
             _vcMissing = vcMissing;
-            int count = missingDrivers.Count + (vcMissing ? 1 : 0);
+            _nicFixes = nicFixes;
+            int count = missingDrivers.Count + (vcMissing ? 1 : 0) + nicFixes.Count;
             _fix.Text = L.T("ui.fix", count);
             _fix.Visible = count > 0;
         }
@@ -327,12 +348,13 @@ namespace DeviceScanner.UI
         /// <summary>Installs what the Windows spec found missing, from the files next to the exe, on a worker thread.</summary>
         private void Fix()
         {
-            if (_running || (_missingDrivers.Count == 0 && !_vcMissing)) return;
+            if (_running || (_missingDrivers.Count == 0 && !_vcMissing && _nicFixes.Count == 0)) return;
             if (!Elevation.IsAdmin()) { Dialogs.Error(L.T("fix.needAdmin"), this); return; }
 
             var spec = new WindowsSpecConfig();
             var drivers = _missingDrivers.ToList();
             bool vc = _vcMissing;
+            var nics = _nicFixes.ToList();
 
             string package = null, vcRedist = null;
             if (drivers.Count > 0 && (package = SpecFixer.NextToExe(spec.DriverPackage) ?? Pick(spec.DriverPackage, "Zip (*.zip)|*.zip")) == null) return;
@@ -340,12 +362,12 @@ namespace DeviceScanner.UI
 
             var items = drivers.ToList();
             if (vc) items.Add(VcRuntimeCheck.Name);
-            var parts = new List<string> { L.T("fix.confirm", items.Count), string.Join(", ", items) };
-            if (drivers.Count > 0) parts.Add(L.T("fix.nicWarning"));
-            if (!Dialogs.Confirm(string.Join("\n\n", parts), caution: true, owner: this)) return;
+            items.AddRange(nics.Select(n => n.ToString()));
+            string warning = drivers.Count > 0 || nics.Count > 0 ? L.T("fix.nicWarning") : null;
+            if (!Dialogs.ConfirmList(L.T("fix.confirm", items.Count), items, warning, caution: true, owner: this)) return;
 
             _running = true;
-            _fix.Enabled = false;
+            _fix.Enabled = _rescan.Enabled = false;
             _subject.Text = L.T("fix.running");
             _subject.ForeColor = Ink;
             _status.ForeColor = Muted;
@@ -361,13 +383,14 @@ namespace DeviceScanner.UI
                 var outcome = new SpecFixer.Outcome();
                 if (drivers.Count > 0) SpecFixer.InstallDrivers(drivers, package, outcome, _log.Add);
                 if (vc) SpecFixer.InstallVcRuntime(vcRedist, spec.VcRuntimeMin, outcome, _log.Add);
+                if (nics.Count > 0) SpecFixer.FixNicSettings(nics, outcome, _log.Add);
                 _log.Add($"    {outcome.Installed.Count} installed, {outcome.Problems.Count} problem(s)");
                 SaveFixLog(logStart);
-                BeginInvoke(new Action(() => FixDone(drivers, vc, outcome)));
+                BeginInvoke(new Action(() => FixDone(drivers, vc, nics, outcome)));
             }) { IsBackground = true, Name = "fix" }.Start();
         }
 
-        private void FixDone(List<string> drivers, bool vc, SpecFixer.Outcome outcome)
+        private void FixDone(List<string> drivers, bool vc, List<NicSettingFix> nics, SpecFixer.Outcome outcome)
         {
             _running = false;
             ShowNewLog();
@@ -375,7 +398,7 @@ namespace DeviceScanner.UI
             _elapsed.Text = "";
             _tick.Stop();
 
-            int tried = drivers.Count + (vc ? 1 : 0);
+            int tried = drivers.Count + (vc ? 1 : 0) + nics.Count;
             bool ok = outcome.Problems.Count == 0;
             string done = L.T("fix.done", outcome.Installed.Count, tried);
             _subject.Text = done;
@@ -384,15 +407,16 @@ namespace DeviceScanner.UI
             _status.Text = L.T("fix.rescan");
 
             ShowFix(drivers.Except(outcome.Installed, StringComparer.OrdinalIgnoreCase).ToList(),
-                    vc && !outcome.Installed.Any(i => i.StartsWith(VcRuntimeCheck.Name, StringComparison.Ordinal)));
-            _fix.Enabled = true;
+                    vc && !outcome.Installed.Any(i => i.StartsWith(VcRuntimeCheck.Name, StringComparison.Ordinal)),
+                    nics.Where(n => !outcome.Installed.Contains(n.ToString())).ToList());
+            _fix.Enabled = _rescan.Enabled = true;
 
-            var message = new List<string> { done };
-            if (!ok) message.Add(string.Join("\n", outcome.Problems.Select(p => "• " + p)));
-            if (outcome.RebootNeeded) message.Add(L.T("fix.reboot"));
-            message.Add(L.T("fix.rescan"));
-            if (ok) Dialogs.Inform(string.Join("\n\n", message), this);
-            else Dialogs.Error(string.Join("\n\n", message), this);
+            // the problems can be many lines: they go in the scrolling list, the rest stays short
+            var footer = new List<string>();
+            if (outcome.RebootNeeded) footer.Add(L.T("fix.reboot"));
+            footer.Add(L.T("fix.rescan"));
+            if (ok) Dialogs.Inform(done + "\n\n" + string.Join("\n\n", footer), this);
+            else Dialogs.InformList(done, outcome.Problems, string.Join("\n\n", footer), error: true, owner: this);
         }
 
         /// <summary>A file that should be next to the exe is not there: the operator browses for it.</summary>

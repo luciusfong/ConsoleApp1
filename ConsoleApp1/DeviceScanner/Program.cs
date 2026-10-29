@@ -61,8 +61,18 @@ namespace DeviceScanner
             bool? runAll = ChooseMode(steps);
             if (runAll == null) return;
 
-            Application.Run(new ScanWindow(report, steps.Select(s => s.Module), log,
-                                           w => RunSteps(w, steps, runAll.Value, report, cfg, log)));
+            // "Scan again" closes the window and runs once more with the same operator, profile and run mode
+            while (true)
+            {
+                var window = new ScanWindow(report, steps.Select(s => s.Module), log,
+                                            w => RunSteps(w, steps, runAll.Value, report, cfg, log));
+                Application.Run(window);
+                if (!window.RescanRequested) return;
+
+                log = new RunLog();
+                report = new RunReport(profile) { UserName = user, StartedAt = DateTime.Now };
+                steps = Steps(cfg, profile, report, log.Add);
+            }
         }
 
         /// <summary>The modules in the order they run.</summary>
@@ -125,6 +135,7 @@ namespace DeviceScanner
                         finally { report.Durations[step.Module] = clock.Elapsed; }
                     }
                     window.End(ModuleVerdicts.For(report, step.Module));
+                    if (run && step.Module == Module.Discovery) RecheckDevices(window, report, cfg, log);
                 }
             }
             catch (Exception ex)
@@ -138,10 +149,31 @@ namespace DeviceScanner
             window.Finish(ModuleVerdicts.Overall(ModuleVerdicts.All(report)), files);
         }
 
+        /// <summary>
+        /// The PC's NIC addresses are set to the profile subnets before the sweep (so it can reach them), and COM port
+        /// numbers after the COM scan (it tells which device sits on which port). Devices are never changed.
+        /// </summary>
         private static void Discover(ScanConfig cfg, MachineProfile profile, RunReport report, Action<string> log)
         {
+            var fixer = new PcAddressFixer(cfg, profile, log);
+            fixer.FixNics(report);
             report.DiscoveredIp = new IpScanner(cfg, IpProbes.Build(cfg), log).Scan();
             report.DiscoveredCom = new ComScanner(cfg, ComProbes.Build(profile.TempSlaves), log).Scan();
+            fixer.FixComPorts(report);
+        }
+
+        /// <summary>After discovery changed a PC address, the Devices verdict is redone so it shows the state now.</summary>
+        private static void RecheckDevices(ScanWindow window, RunReport report, ScanConfig cfg, RunLog log)
+        {
+            if (!report.AddressFixes.Any(f => f.Status != CheckStatus.Fail)) return;
+            log.Add("");
+            log.Add($"===== {ModuleVerdicts.Title(Module.Devices)} ({L.T("ui.recheck")}) =====");
+            window.Begin(Module.Devices);
+            var clock = Stopwatch.StartNew();
+            report.Devices.Clear();
+            try { new ProfileVerifier(cfg, report.Profile, log.Add).Run(report); }
+            finally { report.Durations[Module.Devices] = (report.Durations.TryGetValue(Module.Devices, out var t) ? t : TimeSpan.Zero) + clock.Elapsed; }
+            window.End(ModuleVerdicts.For(report, Module.Devices));
         }
 
         private static void RunIoTests(ScanConfig cfg, MachineProfile profile, RunReport report, Action<string> log)

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Drawing;
+using System.Linq;
 using System.Runtime.InteropServices;
 using System.Windows.Forms;
 
@@ -27,6 +28,49 @@ namespace DeviceScanner.Utils
             using (var form = new PromptForm(question, caution ? SystemIcons.Warning : SystemIcons.Question,
                                              L.T("btn.yes"), L.T("btn.no"), null, focusOk: yesByDefault))
                 return Show(form, owner) == DialogResult.OK;
+        }
+
+        /// <summary>
+        /// Yes / No question over a list of items. The list scrolls (at most ListRows lines tall), so the
+        /// buttons stay on screen however long it is.
+        /// </summary>
+        public static bool ConfirmList(string question, IEnumerable<string> items, string footer = null, bool caution = false,
+                                       IWin32Window owner = null)
+        {
+            using (var form = new PromptForm(question, caution ? SystemIcons.Warning : SystemIcons.Question,
+                                             L.T("btn.yes"), L.T("btn.no"), ItemList(items, footer), focusOk: false))
+                return Show(form, owner) == DialogResult.OK;
+        }
+
+        /// <summary>Message with a scrolling list of details under it (e.g. what could not be fixed).</summary>
+        public static void InformList(string message, IEnumerable<string> items, string footer = null, bool error = false,
+                                      IWin32Window owner = null)
+        {
+            using (var form = new PromptForm(message, error ? SystemIcons.Error : SystemIcons.Information,
+                                             L.T("btn.ok"), null, ItemList(items, footer), focusOk: true))
+                Show(form, owner);
+        }
+
+        private const int ListRows = 14;
+
+        /// <summary>Read-only text box: scrolls, and the operator can select and copy lines from it.</summary>
+        private static Control ItemList(IEnumerable<string> items, string footer)
+        {
+            var lines = items.ToList();
+            var box = new TextBox
+            {
+                Multiline = true, ReadOnly = true, WordWrap = true, ScrollBars = ScrollBars.Vertical,
+                BackColor = SystemColors.Window, Width = 460, TabStop = false, Font = SystemFonts.MessageBoxFont,
+                Text = string.Join(Environment.NewLine, lines.Select(l => "• " + l)),
+            };
+            box.Height = TextRenderer.MeasureText("X", box.Font).Height * Math.Min(Math.Max(lines.Count, 1), ListRows) + 8;
+            if (string.IsNullOrEmpty(footer)) return box;
+
+            var panel = new FlowLayoutPanel { FlowDirection = FlowDirection.TopDown, AutoSize = true, WrapContents = false, Margin = Padding.Empty };
+            box.Margin = new Padding(0, 0, 0, 8);
+            panel.Controls.Add(box);
+            panel.Controls.Add(new Label { Text = footer, AutoSize = true, MaximumSize = new Size(460, 0), Margin = Padding.Empty });
+            return panel;
         }
 
         /// <summary>One line of text. OK only works once something is typed; null = window closed / cancelled.</summary>
