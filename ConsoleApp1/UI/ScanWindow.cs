@@ -46,7 +46,7 @@ namespace DeviceScanner.UI
             Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Both, WordWrap = false, Dock = DockStyle.Fill,
             Font = new Font("Consolas", 8.5f), BackColor = Color.White, Visible = false,
         };
-        private readonly Button _toggleLog, _openPdf, _fixDrivers, _openLog, _close;
+        private readonly Button _toggleLog, _openPdf, _fix, _openLog, _close;
         private readonly System.Windows.Forms.Timer _tick = new System.Windows.Forms.Timer { Interval = 200 };
 
         private Stopwatch _clock;
@@ -55,6 +55,7 @@ namespace DeviceScanner.UI
         private ScanFiles _files;
         private readonly RunReport _report;
         private List<string> _missingDrivers = new List<string>();
+        private bool _vcMissing;
 
         public ScanWindow(RunReport report, IEnumerable<Module> order, RunLog log, Action<ScanWindow> work)
         {
@@ -89,11 +90,11 @@ namespace DeviceScanner.UI
             _openPdf = Button(L.T("ui.openPdf"), (s, e) => Open(_files?.PdfPath));
             _openLog = Button(L.T("ui.openLog"), (s, e) => Open(_files?.LogPath));
             _toggleLog = Button(L.T("ui.showLog"), (s, e) => ToggleLog());
-            _fixDrivers = Button("", (s, e) => FixDrivers());
-            _fixDrivers.ForeColor = FailFg;
-            _fixDrivers.Visible = false;
+            _fix = Button("", (s, e) => Fix());
+            _fix.ForeColor = FailFg;
+            _fix.Visible = false;
             _openPdf.Enabled = _openLog.Enabled = false;
-            bar.Controls.AddRange(new Control[] { _close, _openPdf, _fixDrivers, _openLog, _toggleLog });
+            bar.Controls.AddRange(new Control[] { _close, _openPdf, _fix, _openLog, _toggleLog });
             Controls.Add(bar);
 
             _tick.Tick += (s, e) => ShowNewLog();
@@ -164,7 +165,7 @@ namespace DeviceScanner.UI
             _openPdf.Enabled = files.PdfPath != null;
             _openLog.Enabled = files.LogPath != null;
             if (_openPdf.Enabled) _openPdf.Focus();
-            ShowFixDrivers(DriverInstaller.Missing(_report.WindowsSpec));
+            ShowFix(SpecFixer.MissingDrivers(_report.WindowsSpec), VcRuntimeCheck.Missing(_report.WindowsSpec));
             Activate();
         }));
 
@@ -313,29 +314,38 @@ namespace DeviceScanner.UI
 
         // ---------- fixing ----------
 
-        private void ShowFixDrivers(List<string> missing)
+        /// <summary>The fix button: shown while the Windows spec found missing drivers or a missing VC++ runtime.</summary>
+        private void ShowFix(List<string> missingDrivers, bool vcMissing)
         {
-            _missingDrivers = missing;
-            _fixDrivers.Text = L.T("ui.fixDrivers", missing.Count);
-            _fixDrivers.Visible = missing.Count > 0;
+            _missingDrivers = missingDrivers;
+            _vcMissing = vcMissing;
+            int count = missingDrivers.Count + (vcMissing ? 1 : 0);
+            _fix.Text = L.T("ui.fix", count);
+            _fix.Visible = count > 0;
         }
 
-        /// <summary>Installs the drivers the Windows spec found MISSING from the driver package, on a worker thread.</summary>
-        private void FixDrivers()
+        /// <summary>Installs what the Windows spec found missing, from the files next to the exe, on a worker thread.</summary>
+        private void Fix()
         {
-            if (_running || _missingDrivers.Count == 0) return;
+            if (_running || (_missingDrivers.Count == 0 && !_vcMissing)) return;
             if (!Elevation.IsAdmin()) { Dialogs.Error(L.T("fix.needAdmin"), this); return; }
 
             var spec = new WindowsSpecConfig();
-            string package = DriverInstaller.FindPackage(spec) ?? PickPackage(spec);
-            if (package == null) return;
+            var drivers = _missingDrivers.ToList();
+            bool vc = _vcMissing;
 
-            var missing = _missingDrivers.ToList();
-            if (!Dialogs.Confirm(L.T("fix.confirm", missing.Count, package, string.Join(", ", missing)), caution: true, owner: this))
-                return;
+            string package = null, vcRedist = null;
+            if (drivers.Count > 0 && (package = SpecFixer.NextToExe(spec.DriverPackage) ?? Pick(spec.DriverPackage, "Zip (*.zip)|*.zip")) == null) return;
+            if (vc && (vcRedist = SpecFixer.NextToExe(spec.VcRedistInstaller) ?? Pick(spec.VcRedistInstaller, "vc_redist (*.exe)|*.exe")) == null) return;
+
+            var items = drivers.ToList();
+            if (vc) items.Add(VcRuntimeCheck.Name);
+            var parts = new List<string> { L.T("fix.confirm", items.Count), string.Join(", ", items) };
+            if (drivers.Count > 0) parts.Add(L.T("fix.nicWarning"));
+            if (!Dialogs.Confirm(string.Join("\n\n", parts), caution: true, owner: this)) return;
 
             _running = true;
-            _fixDrivers.Enabled = false;
+            _fix.Enabled = false;
             _subject.Text = L.T("fix.running");
             _subject.ForeColor = Ink;
             _status.ForeColor = Muted;
@@ -344,17 +354,20 @@ namespace DeviceScanner.UI
             _tick.Start();
             int logStart = _log.Count;
             _log.Add("");
-            _log.Add($"===== {L.T("ui.fixDrivers", missing.Count)} =====");
+            _log.Add($"===== {L.T("ui.fix", items.Count)} =====");
 
             new Thread(() =>
             {
-                var outcome = DriverInstaller.Install(missing, package, _log.Add);
+                var outcome = new SpecFixer.Outcome();
+                if (drivers.Count > 0) SpecFixer.InstallDrivers(drivers, package, outcome, _log.Add);
+                if (vc) SpecFixer.InstallVcRuntime(vcRedist, spec.VcRuntimeMin, outcome, _log.Add);
+                _log.Add($"    {outcome.Installed.Count} installed, {outcome.Problems.Count} problem(s)");
                 SaveFixLog(logStart);
-                BeginInvoke(new Action(() => FixDone(missing, outcome)));
-            }) { IsBackground = true, Name = "drivers" }.Start();
+                BeginInvoke(new Action(() => FixDone(drivers, vc, outcome)));
+            }) { IsBackground = true, Name = "fix" }.Start();
         }
 
-        private void FixDone(List<string> tried, DriverInstaller.Outcome outcome)
+        private void FixDone(List<string> drivers, bool vc, SpecFixer.Outcome outcome)
         {
             _running = false;
             ShowNewLog();
@@ -362,16 +375,19 @@ namespace DeviceScanner.UI
             _elapsed.Text = "";
             _tick.Stop();
 
+            int tried = drivers.Count + (vc ? 1 : 0);
             bool ok = outcome.Problems.Count == 0;
-            _subject.Text = L.T("fix.done", outcome.Installed.Count, tried.Count);
+            string done = L.T("fix.done", outcome.Installed.Count, tried);
+            _subject.Text = done;
             _subject.ForeColor = ok ? PassFg : FailFg;
             _spinner.Stop(ok ? PassFg : FailFg, ok ? "✓" : "✕");
             _status.Text = L.T("fix.rescan");
 
-            ShowFixDrivers(tried.Except(outcome.Installed, StringComparer.OrdinalIgnoreCase).ToList());
-            _fixDrivers.Enabled = true;
+            ShowFix(drivers.Except(outcome.Installed, StringComparer.OrdinalIgnoreCase).ToList(),
+                    vc && !outcome.Installed.Any(i => i.StartsWith(VcRuntimeCheck.Name, StringComparison.Ordinal)));
+            _fix.Enabled = true;
 
-            var message = new List<string> { L.T("fix.done", outcome.Installed.Count, tried.Count) };
+            var message = new List<string> { done };
             if (!ok) message.Add(string.Join("\n", outcome.Problems.Select(p => "• " + p)));
             if (outcome.RebootNeeded) message.Add(L.T("fix.reboot"));
             message.Add(L.T("fix.rescan"));
@@ -379,12 +395,12 @@ namespace DeviceScanner.UI
             else Dialogs.Error(string.Join("\n\n", message), this);
         }
 
-        private string PickPackage(WindowsSpecConfig spec)
+        /// <summary>A file that should be next to the exe is not there: the operator browses for it.</summary>
+        private string Pick(string fileName, string filter)
         {
-            using (var dlg = new OpenFileDialog { Title = L.T("fix.pickPackage", spec.DriverPackage), Filter = "Zip (*.zip)|*.zip" })
+            using (var dlg = new OpenFileDialog { Title = L.T("fix.pickFile", fileName), Filter = filter, FileName = fileName })
                 return dlg.ShowDialog(this) == DialogResult.OK ? dlg.FileName : null;
         }
-
         /// <summary>The log file was written when the scan ended: the install log is added to it.</summary>
         private void SaveFixLog(int from)
         {

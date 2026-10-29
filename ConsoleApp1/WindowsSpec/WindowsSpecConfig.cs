@@ -62,6 +62,10 @@ namespace DeviceScanner.WindowsSpec
         // ----- driver package for the "Install missing drivers" button (zip of DriverStore\FileRepository folders, next to the exe) -----
         public string DriverPackage { get; } = "drivers.zip";
 
+        // ----- Visual C++ 2015-2022 runtime (x64), installed by the same button from the installer next to the exe -----
+        public Version VcRuntimeMin { get; } = new Version(14, 0, 23026);              // = the bundled vc_redist.x64.exe
+        public string VcRedistInstaller { get; } = "vc_redist.x64.exe";
+
         // ----- drivers that must be in the driver store, paired with the module that needs them -----
         // Uses: "*" = every machine | "com" = profile has any com.expect device | "gantry" = profile has home.programs
         //       | otherwise a device name from the profile (ip.expect / com.expect, e.g. "Camera GigE", "CL3 (Keyence)").

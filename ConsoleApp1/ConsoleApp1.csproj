@@ -208,7 +208,7 @@
     <Compile Include="Utils\Strings.cs" />
     <Compile Include="WindowsSpec\ChineseNameCheck.cs" />
     <Compile Include="WindowsSpec\DefenderCheck.cs" />
-    <Compile Include="WindowsSpec\DriverInstaller.cs" />
+    <Compile Include="WindowsSpec\SpecFixer.cs" />
     <Compile Include="WindowsSpec\DriverStoreCheck.cs" />
     <Compile Include="WindowsSpec\ForbiddenAppCheck.cs" />
     <Compile Include="WindowsSpec\LocaleCheck.cs" />
@@ -217,6 +217,7 @@
     <Compile Include="WindowsSpec\SpecCheck.cs" />
     <Compile Include="WindowsSpec\SpecHelpers.cs" />
     <Compile Include="WindowsSpec\SpecReport.cs" />
+    <Compile Include="WindowsSpec\VcRuntimeCheck.cs" />
     <Compile Include="WindowsSpec\WindowsSpecChecker.cs" />
     <Compile Include="WindowsSpec\WindowsSpecConfig.cs" />
   </ItemGroup>
@@ -382,6 +383,10 @@
     </Content>
     <Content Include="Drivers\drivers.zip">
       <Link>drivers.zip</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="Drivers\vc_redist.x64.exe">
+      <Link>vc_redist.x64.exe</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
     <Content Include="External\zxing.dll">

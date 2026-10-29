@@ -42,6 +42,7 @@ namespace DeviceScanner.WindowsSpec
                 new DefenderCheck(_spec, _log),
                 new NicSettingsCheck(_spec, _log),
                 new DriverStoreCheck(_spec, _profile, _log),
+                new VcRuntimeCheck(_spec, _log),
                 new ForbiddenAppCheck(_spec, _log),
                 new ChineseNameCheck(_spec, _cfg.ReportDir, _log),   // slowest, last
             };

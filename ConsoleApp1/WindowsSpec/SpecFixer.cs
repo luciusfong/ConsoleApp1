@@ -6,42 +6,47 @@ using System.IO;
 using System.IO.Compression;
 using System.Linq;
 using System.Text;
+using DeviceScanner.Reporting;
 using DeviceScanner.Utils;
 
 namespace DeviceScanner.WindowsSpec
 {
     /// <summary>
-    /// The fix for the driver part of the Windows spec: installs the driver INFs the check found MISSING from the
-    /// driver package (a zip of DriverStore\FileRepository folders, WindowsSpecConfig.DriverPackage) with
-    /// "pnputil /add-driver /install". Only ever started by the operator; needs admin rights.
+    /// The fix for what the Windows spec found missing, installed from files shipped next to the exe:
+    ///   driver INFs reported MISSING  -> "pnputil /add-driver /install" from the driver package
+    ///                                    (a zip of DriverStore\FileRepository folders, WindowsSpecConfig.DriverPackage)
+    ///   Visual C++ x64 runtime        -> vc_redist.x64.exe /install /quiet /norestart
+    /// Only ever started by the operator; needs admin rights. Every result is confirmed by reading the PC again.
     /// </summary>
-    internal static class DriverInstaller
+    internal static class SpecFixer
     {
         internal sealed class Outcome
         {
             public List<string> Installed { get; } = new List<string>();
-            public List<string> Problems { get; } = new List<string>();     // "inf: why", one line each
+            public List<string> Problems { get; } = new List<string>();     // "item: why", one line each
             public bool RebootNeeded { get; set; }
         }
 
-        private const int RebootRequired = 3010;   // ERROR_SUCCESS_REBOOT_REQUIRED
+        private const int RebootRequired = 3010;       // ERROR_SUCCESS_REBOOT_REQUIRED
+        private const int NewerInstalled = 1638;       // ERROR_PRODUCT_VERSION: a newer runtime is already there
 
         /// <summary>INF names the driver store check reported MISSING.</summary>
-        public static List<string> Missing(SpecReport spec) =>
+        public static List<string> MissingDrivers(SpecReport spec) =>
             spec == null ? new List<string>() :
             spec.Items.Where(i => i.Group.StartsWith("Drivers:", StringComparison.Ordinal) && i.Actual == "MISSING")
                       .Select(i => i.Name).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
 
-        /// <summary>The driver package next to the exe, or null if it is not there.</summary>
-        public static string FindPackage(WindowsSpecConfig spec)
+        /// <summary>A file shipped next to the exe, or null if it is not there.</summary>
+        public static string NextToExe(string fileName)
         {
-            string path = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, spec.DriverPackage);
+            string path = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, fileName);
             return File.Exists(path) ? path : null;
         }
 
-        public static Outcome Install(IEnumerable<string> infs, string package, Action<string> log)
+        // ---------- drivers ----------
+
+        public static void InstallDrivers(IEnumerable<string> infs, string package, Outcome outcome, Action<string> log)
         {
-            var outcome = new Outcome();
             string temp = Path.Combine(Path.GetTempPath(), "DeviceScanner_drivers_" + Guid.NewGuid().ToString("N"));
             try
             {
@@ -66,7 +71,7 @@ namespace DeviceScanner.WindowsSpec
                     foreach (string path in copies)
                     {
                         log($"    pnputil /add-driver {Path.GetFileName(Path.GetDirectoryName(path))}\\{inf} /install");
-                        int code = PnpUtil(path, log, out string output);
+                        int code = Run(Path.Combine(SystemDir(), "pnputil.exe"), $"/add-driver \"{path}\" /install", log, out string output);
                         if (code == RebootRequired) outcome.RebootNeeded = true;
                         else if (code != 0) error = $"pnputil exit code {code}" + (output.Length > 0 ? ": " + output : "");
                     }
@@ -85,20 +90,45 @@ namespace DeviceScanner.WindowsSpec
             {
                 try { Directory.Delete(temp, recursive: true); } catch { }
             }
-            log($"    {outcome.Installed.Count} driver(s) installed, {outcome.Problems.Count} problem(s)");
-            return outcome;
         }
 
-        /// <summary>Runs pnputil; its last output line (the result) comes back in <paramref name="output"/>.</summary>
-        private static int PnpUtil(string infPath, Action<string> log, out string output)
+        // ---------- Visual C++ runtime ----------
+
+        public static void InstallVcRuntime(string installer, Version min, Outcome outcome, Action<string> log)
         {
-            // a 32-bit process sees SysWOW64 as System32, and there is no 32-bit pnputil
-            string system = Environment.Is64BitOperatingSystem && !Environment.Is64BitProcess
+            string name = VcRuntimeCheck.Name;
+            try
+            {
+                log($"    {Path.GetFileName(installer)} /install /quiet /norestart");
+                int code = Run(installer, "/install /quiet /norestart", log, out _);
+                log($"        exit code {code}");
+                if (code == RebootRequired) outcome.RebootNeeded = true;
+
+                Version now = VcRuntimeCheck.Installed();
+                if (now != null && now >= min) outcome.Installed.Add($"{name} {now}");
+                else outcome.Problems.Add($"{name}: " + (code == 0 || code == RebootRequired || code == NewerInstalled
+                                                             ? L.T("fix.notAdded") : $"vc_redist exit code {code}"));
+            }
+            catch (Exception ex)
+            {
+                log("    VC++ runtime install stopped: " + ex.Message);
+                outcome.Problems.Add($"{name}: {ex.Message}");
+            }
+        }
+
+        // ---------- helpers ----------
+
+        /// <summary>System32 as a 64-bit process sees it (a 32-bit process is redirected to SysWOW64, which has no pnputil).</summary>
+        private static string SystemDir() =>
+            Environment.Is64BitOperatingSystem && !Environment.Is64BitProcess
                 ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows), "Sysnative")
                 : Environment.SystemDirectory;
-            var oem = Encoding.GetEncoding(CultureInfo.CurrentCulture.TextInfo.OEMCodePage);
 
-            var psi = new ProcessStartInfo(Path.Combine(system, "pnputil.exe"), $"/add-driver \"{infPath}\" /install")
+        /// <summary>Runs a tool and logs its output; its last output line comes back in <paramref name="output"/>.</summary>
+        private static int Run(string file, string args, Action<string> log, out string output)
+        {
+            var oem = Encoding.GetEncoding(CultureInfo.CurrentCulture.TextInfo.OEMCodePage);
+            var psi = new ProcessStartInfo(file, args)
             {
                 UseShellExecute = false, CreateNoWindow = true,
                 RedirectStandardOutput = true, RedirectStandardError = true,
