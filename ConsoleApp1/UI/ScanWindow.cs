@@ -1,0 +1,353 @@
+using System;
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.Drawing;
+using System.Linq;
+using System.Threading;
+using System.Windows.Forms;
+using DeviceScanner.Reporting;
+using DeviceScanner.Utils;
+
+namespace DeviceScanner.UI
+{
+    /// <summary>
+    /// The one window of a run. The top shows a spinner and the module being checked right now with its latest step;
+    /// below, one row per module fills in with PASS / WARN / FAIL / NOT RUN as each finishes. The full log can be shown,
+    /// and at the end the PDF and the log can be opened from here.
+    /// The checks run on a worker thread; the methods it calls (Ask, Begin, End, Finish, ShowError) marshal to the UI thread.
+    /// </summary>
+    internal sealed class ScanWindow : Form
+    {
+        // palette of the report template
+        private static readonly Color Navy = Color.FromArgb(0x1F, 0x3A, 0x5F);
+        private static readonly Color NavyLight = Color.FromArgb(0xC9, 0xD6, 0xE6);
+        private static readonly Color Ink = Color.FromArgb(0x1F, 0x29, 0x33);
+        private static readonly Color Muted = Color.FromArgb(0x6B, 0x77, 0x85);
+        private static readonly Color Rule = Color.FromArgb(0xD5, 0xDB, 0xE1);
+        private static readonly Color HeadBg = Color.FromArgb(0xEE, 0xF2, 0xF6);
+        private static readonly Color PassFg = Color.FromArgb(0x1E, 0x7B, 0x3C), PassBg = Color.FromArgb(0xE3, 0xF4, 0xE8);
+        private static readonly Color WarnFg = Color.FromArgb(0x9A, 0x67, 0x00), WarnBg = Color.FromArgb(0xFF, 0xF3, 0xD6);
+        private static readonly Color FailFg = Color.FromArgb(0xB4, 0x23, 0x18), FailBg = Color.FromArgb(0xFB, 0xE4, 0xE4);
+
+        private const int LogHeight = 240;
+        private const int MaxProblemLines = 3;
+
+        private readonly RunLog _log;
+        private readonly Action<ScanWindow> _work;
+        private readonly Dictionary<Module, Row> _rows = new Dictionary<Module, Row>();
+        private readonly Spinner _spinner = new Spinner { Size = new Size(52, 52), Margin = new Padding(0, 0, 16, 0) };
+        private readonly Label _subject = new Label { AutoSize = true, ForeColor = Ink, Margin = new Padding(0, 2, 0, 2) };
+        private readonly Label _status = new Label { AutoSize = false, AutoEllipsis = true, UseMnemonic = false, ForeColor = Muted, Height = 20, Margin = Padding.Empty };
+        private readonly Label _elapsed = new Label { AutoSize = true, ForeColor = Muted, Margin = Padding.Empty };
+        private readonly TextBox _logBox = new TextBox
+        {
+            Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Both, WordWrap = false, Dock = DockStyle.Fill,
+            Font = new Font("Consolas", 8.5f), BackColor = Color.White, Visible = false,
+        };
+        private readonly Button _toggleLog, _openPdf, _openLog, _close;
+        private readonly System.Windows.Forms.Timer _tick = new System.Windows.Forms.Timer { Interval = 200 };
+
+        private Stopwatch _clock;
+        private int _logShown;
+        private volatile bool _running;
+        private ScanFiles _files;
+
+        public ScanWindow(RunReport report, IEnumerable<Module> order, RunLog log, Action<ScanWindow> work)
+        {
+            _log = log;
+            _work = work;
+
+            Text = $"{Dialogs.Caption} - {report.Profile.Name}";
+            Font = SystemFonts.MessageBoxFont;
+            AutoScaleMode = AutoScaleMode.Font;
+            BackColor = Color.White;
+            StartPosition = FormStartPosition.CenterScreen;
+            FormBorderStyle = FormBorderStyle.Sizable;
+            MaximizeBox = false;
+            ClientSize = new Size(720, 400);
+            Icon = SystemIcons.Application;
+
+            _subject.Font = new Font(Font.FontFamily, 13f, FontStyle.Bold);
+
+            // Dock order: last added is laid out first, so Fill goes first and the edges after it
+            Controls.Add(_logBox);
+            Controls.Add(BuildModules(order));
+            Controls.Add(BuildSubject());
+            Controls.Add(BuildHeader(report));
+
+            var bar = new FlowLayoutPanel
+            {
+                Dock = DockStyle.Bottom, FlowDirection = FlowDirection.RightToLeft, AutoSize = true,
+                Padding = new Padding(12, 10, 12, 10), BackColor = HeadBg,
+            };
+            _close = Button(L.T("ui.close"), (s, e) => Close());
+            _openPdf = Button(L.T("ui.openPdf"), (s, e) => Open(_files?.PdfPath));
+            _openLog = Button(L.T("ui.openLog"), (s, e) => Open(_files?.LogPath));
+            _toggleLog = Button(L.T("ui.showLog"), (s, e) => ToggleLog());
+            _openPdf.Enabled = _openLog.Enabled = false;
+            bar.Controls.AddRange(new Control[] { _close, _openPdf, _openLog, _toggleLog });
+            Controls.Add(bar);
+
+            _tick.Tick += (s, e) => ShowNewLog();
+            Load += (s, e) => FitHeight();
+            Shown += (s, e) => StartWork();
+            FormClosing += OnClosing;
+        }
+
+        // ---------- called from the worker thread ----------
+
+        public bool Ask(string question, bool caution) => (bool)Invoke(new Func<bool>(() => Dialogs.Confirm(question, caution, owner: this)));
+
+        public void Begin(Module m) => Invoke(new Action(() =>
+        {
+            ShowNewLog();
+            _clock = Stopwatch.StartNew();
+            _subject.Text = L.T("ui.checking", ModuleVerdicts.Title(m));
+            _status.Text = "";
+            _spinner.Start();
+            _rows[m].Set(L.T("ui.running"), Navy, NavyLight);
+        }));
+
+        public void End(ModuleResult r) => Invoke(new Action(() =>
+        {
+            ShowNewLog();
+            var row = _rows[r.Module];
+            Colors(r.Status, out var fg, out var bg);
+            row.Set(PdfReport.TagOf(r.Status), fg, bg);
+            row.Summary.Text = r.Summary;
+            row.Summary.ForeColor = r.Status == ModuleStatus.NotRun ? Muted : Ink;
+            row.Time.Text = r.Duration.HasValue ? Elapsed(r.Duration.Value) : "";
+
+            if (r.Problems.Count > 0)
+            {
+                var lines = r.Problems.Take(MaxProblemLines).Select(p => "• " + p).ToList();
+                if (r.Problems.Count > MaxProblemLines) lines.Add(L.T("ui.more", r.Problems.Count - MaxProblemLines));
+                row.Problems.Text = string.Join("\n", lines);
+                row.Problems.ForeColor = fg;
+                row.Problems.Visible = true;
+                FitHeight();
+            }
+            _subject.Text = L.T("ui.waitingNext");
+            _status.Text = "";
+            _elapsed.Text = "";
+            _clock = null;
+        }));
+
+        public void Finish(RunVerdict verdict, ScanFiles files) => Invoke(new Action(() =>
+        {
+            _running = false;
+            _files = files;
+            ShowNewLog();
+            _clock = null;
+            _elapsed.Text = "";
+            _tick.Stop();
+
+            _subject.Text = verdict.Passed ? L.T("sum.overallPass") : L.T("sum.overallFail", verdict.Failures);
+            _subject.ForeColor = verdict.Passed ? PassFg : FailFg;
+            _spinner.Stop(verdict.Passed ? (verdict.Warnings > 0 ? WarnFg : PassFg) : FailFg,
+                          verdict.Passed ? (verdict.Warnings > 0 ? "!" : "✓") : "✕");
+
+            var notes = new List<string>();
+            if (verdict.Warnings > 0) notes.Add(L.T("sum.warnings", verdict.Warnings).Trim());
+            if (verdict.NotRun.Count > 0) notes.Add(L.T("sum.notRunList", string.Join(", ", verdict.NotRun)).Trim());
+            _status.Text = files.Error ?? string.Join("    ", notes);
+            _status.ForeColor = files.Error != null ? FailFg : Muted;
+
+            _openPdf.Enabled = files.PdfPath != null;
+            _openLog.Enabled = files.LogPath != null;
+            if (_openPdf.Enabled) _openPdf.Focus();
+            Activate();
+        }));
+
+        public void ShowError(string message) => Invoke(new Action(() => Dialogs.Error(message, this)));
+
+        // ---------- layout ----------
+
+        private Control BuildHeader(RunReport report)
+        {
+            var header = new Panel { Dock = DockStyle.Top, Height = 64, BackColor = Navy, Padding = new Padding(20, 10, 20, 10) };
+            header.Controls.Add(new Label
+            {
+                Text = L.T("ui.operator", report.UserName, report.StartedAt.ToString("yyyy-MM-dd HH:mm")),
+                ForeColor = NavyLight, AutoSize = true, Dock = DockStyle.Top,
+            });
+            header.Controls.Add(new Label
+            {
+                Text = L.T("pdf.title") + "  ·  " + report.Profile.Name,
+                ForeColor = Color.White, AutoSize = true, Dock = DockStyle.Top,
+                Font = new Font(Font.FontFamily, 14f, FontStyle.Bold),
+            });
+            return header;
+        }
+
+        private Control BuildSubject()
+        {
+            var text = new TableLayoutPanel { AutoSize = true, ColumnCount = 1, Dock = DockStyle.Fill, Margin = Padding.Empty };
+            text.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+            _subject.Text = L.T("ui.starting");
+            _status.Dock = DockStyle.Fill;
+            text.Controls.Add(_subject);
+            text.Controls.Add(_status);
+            text.Controls.Add(_elapsed);
+
+            var grid = new TableLayoutPanel { Dock = DockStyle.Top, Height = 92, ColumnCount = 2, Padding = new Padding(20, 16, 20, 8) };
+            grid.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+            grid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+            grid.Controls.Add(_spinner, 0, 0);
+            grid.Controls.Add(text, 1, 0);
+            return grid;
+        }
+
+        private Control BuildModules(IEnumerable<Module> order)
+        {
+            var grid = new TableLayoutPanel
+            {
+                Dock = DockStyle.Top, AutoSize = true, ColumnCount = 4, Padding = new Padding(20, 4, 20, 12),
+                CellBorderStyle = TableLayoutPanelCellBorderStyle.None,
+            };
+            grid.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+            grid.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+            grid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+            grid.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+
+            grid.Controls.Add(Caption(L.T("col.status")), 0, 0);
+            grid.Controls.Add(Caption(L.T("col.module")), 1, 0);
+            grid.Controls.Add(Caption(L.T("col.result")), 2, 0);
+            grid.Controls.Add(Caption(L.T("col.duration")), 3, 0);
+
+            // explicit cells: the table's auto-flow skips hidden controls, which would shift every row after a hidden problems line
+            int y = 1;
+            foreach (var m in order)
+            {
+                var row = new Row(this, m);
+                _rows[m] = row;
+                grid.Controls.Add(row.Badge, 0, y);
+                grid.Controls.Add(row.Title, 1, y);
+                grid.Controls.Add(row.Summary, 2, y);
+                grid.Controls.Add(row.Time, 3, y);
+                grid.Controls.Add(row.Problems, 1, y + 1);
+                grid.SetColumnSpan(row.Problems, 3);
+                y += 2;
+            }
+            return grid;
+        }
+
+        private Label Caption(string text) => new Label
+        {
+            Text = text, AutoSize = true, ForeColor = Muted, Font = new Font(Font, FontStyle.Bold), Margin = new Padding(0, 6, 12, 4),
+        };
+
+        private Button Button(string text, EventHandler click)
+        {
+            var b = new Button { Text = text, AutoSize = true, MinimumSize = new Size(100, 30), Margin = new Padding(8, 0, 0, 0) };
+            b.Click += click;
+            return b;
+        }
+
+        /// <summary>Window height = everything docked at the edges (+ the log when it is shown).</summary>
+        private void FitHeight()
+        {
+            int edges = Controls.Cast<Control>().Where(c => c != _logBox && c.Visible).Sum(c => c.Height);
+            int want = edges + (_logBox.Visible ? LogHeight : 0);
+            MinimumSize = new Size(560, Height - ClientSize.Height + edges);
+            if (ClientSize.Height < want || !_logBox.Visible) ClientSize = new Size(ClientSize.Width, want);
+        }
+
+        private void ToggleLog()
+        {
+            _logBox.Visible = !_logBox.Visible;
+            _toggleLog.Text = L.T(_logBox.Visible ? "ui.hideLog" : "ui.showLog");
+            FitHeight();
+            if (_logBox.Visible) { _logBox.SelectionStart = _logBox.TextLength; _logBox.ScrollToCaret(); }
+        }
+
+        // ---------- running ----------
+
+        private void StartWork()
+        {
+            _running = true;
+            _tick.Start();
+            var worker = new Thread(() =>
+            {
+                try { _work(this); }
+                catch (Exception ex)
+                {
+                    _log.Add(L.T("msg.error", ex));
+                    if (IsHandleCreated) ShowError(L.T("msg.error", ex.Message));
+                }
+                finally { _running = false; }
+            }) { IsBackground = true, Name = "scan" };
+            worker.Start();
+        }
+
+        /// <summary>New log lines into the log box; the latest one under the module title; the module's running time.</summary>
+        private void ShowNewLog()
+        {
+            var lines = _log.Since(_logShown);
+            if (lines.Count > 0)
+            {
+                _logShown += lines.Count;
+                _logBox.AppendText(string.Join(Environment.NewLine, lines) + Environment.NewLine);
+                string last = lines.LastOrDefault(l => l.Trim().Length > 0);
+                if (last != null && _clock != null) _status.Text = last.Trim();
+            }
+            if (_clock != null) _elapsed.Text = Elapsed(_clock.Elapsed);
+        }
+
+        private void OnClosing(object sender, FormClosingEventArgs e)
+        {
+            if (!_running) return;
+            // the checks cannot be interrupted half way (a homing program keeps running on the controller anyway)
+            if (!Dialogs.Confirm(L.T("ui.quitRunning"), caution: true, owner: this)) { e.Cancel = true; return; }
+            Environment.Exit(1);
+        }
+
+        private void Open(string path)
+        {
+            if (path == null) return;
+            try { Process.Start(path); }
+            catch (Exception ex) { Dialogs.Error(ex.Message, this); }
+        }
+
+        private static void Colors(ModuleStatus s, out Color fg, out Color bg)
+        {
+            switch (s)
+            {
+                case ModuleStatus.Pass: fg = PassFg; bg = PassBg; break;
+                case ModuleStatus.Warn: fg = WarnFg; bg = WarnBg; break;
+                case ModuleStatus.Fail: fg = FailFg; bg = FailBg; break;
+                default: fg = Muted; bg = HeadBg; break;
+            }
+        }
+
+        private static string Elapsed(TimeSpan t) => $"{(int)t.TotalMinutes}:{t.Seconds:00}";
+
+        /// <summary>The controls of one module row.</summary>
+        private sealed class Row
+        {
+            public readonly Label Badge, Title, Summary, Time, Problems;
+
+            public Row(ScanWindow w, Module m)
+            {
+                Badge = new Label
+                {
+                    AutoSize = false, Size = new Size(88, 24), TextAlign = ContentAlignment.MiddleCenter,
+                    Font = new Font(w.Font, FontStyle.Bold), Margin = new Padding(0, 4, 14, 4),
+                };
+                Title = new Label { Text = ModuleVerdicts.Title(m), AutoSize = true, ForeColor = Ink,
+                                    Font = new Font(w.Font, FontStyle.Bold), Anchor = AnchorStyles.Left, Margin = new Padding(0, 4, 16, 4) };
+                Summary = new Label { AutoSize = true, UseMnemonic = false, ForeColor = Muted, Anchor = AnchorStyles.Left, Margin = new Padding(0, 4, 12, 4) };
+                Time = new Label { AutoSize = true, ForeColor = Muted, Anchor = AnchorStyles.Right, Margin = new Padding(0, 4, 0, 4) };
+                Problems = new Label { AutoSize = true, UseMnemonic = false, MaximumSize = new Size(560, 0), Visible = false, Margin = new Padding(0, 0, 0, 6) };
+                Set(L.T("ui.waiting"), Muted, HeadBg);
+            }
+
+            public void Set(string tag, Color fg, Color bg)
+            {
+                Badge.Text = tag;
+                Badge.ForeColor = fg;
+                Badge.BackColor = bg;
+            }
+        }
+    }
+}

@@ -6,45 +6,56 @@ using System.Text;
 
 namespace DeviceScanner.Reporting
 {
-    /// <summary>Closing part of a run: overall verdict in the console, then the PDF report and the full log next to it.</summary>
+    /// <summary>Where the end-of-run files went. A path is null if that file could not be written; Error says why.</summary>
+    internal sealed class ScanFiles
+    {
+        public string PdfPath { get; set; }
+        public string LogPath { get; set; }
+        public string Error { get; set; }
+    }
+
+    /// <summary>Closing part of a run: the PDF report and the full log, saved side by side in the report folder.</summary>
     internal static class ScanSummary
     {
-        /// <summary>Prints the verdict and saves the reports. Returns the PDF path, or null if it could not be written.</summary>
-        public static string Print(RunReport r, ScanConfig cfg, ConsoleProgress ui)
+        public static ScanFiles Save(RunReport r, ScanConfig cfg, RunLog log)
         {
             DateTime finished = DateTime.Now;
             var modules = ModuleVerdicts.All(r);
             var verdict = ModuleVerdicts.Overall(modules);
+            var files = new ScanFiles();
 
-            ui.Line("");
-            ui.Line(L.T("sum.result"));
-            ui.Line(verdict.Passed ? L.T("sum.overallPass") : L.T("sum.overallFail", verdict.Failures),
-                    verdict.Passed ? ConsoleColor.Green : ConsoleColor.Red);
-            if (verdict.Warnings > 0)
-                ui.Line(L.T("sum.warnings", verdict.Warnings), ConsoleColor.Yellow);
-            if (verdict.NotRun.Count > 0)
-                ui.Line(L.T("sum.notRunList", string.Join(", ", verdict.NotRun)), ConsoleColor.DarkGray);
+            log.Add("");
+            log.Add(L.T("sum.result"));
+            log.Add(verdict.Passed ? L.T("sum.overallPass") : L.T("sum.overallFail", verdict.Failures));
+            if (verdict.Warnings > 0) log.Add(L.T("sum.warnings", verdict.Warnings));
+            if (verdict.NotRun.Count > 0) log.Add(L.T("sum.notRunList", string.Join(", ", verdict.NotRun)));
 
             string stamp = $"{r.Profile.Name}_{finished:yyyyMMddHHmmss}";
             try { Directory.CreateDirectory(cfg.ReportDir); }
-            catch (Exception ex) { ui.Line(L.T("sum.pdfError", ex.Message), ConsoleColor.Red); return null; }
+            catch (Exception ex)
+            {
+                files.Error = L.T("sum.pdfError", ex.Message);
+                log.Add(files.Error);
+                return files;
+            }
 
-            string pdfPath = SavePdf(Path.Combine(cfg.ReportDir, stamp + "_ScanSummary.pdf"), r, cfg, modules, finished, ui);
+            files.PdfPath = SavePdf(Path.Combine(cfg.ReportDir, stamp + "_ScanSummary.pdf"), r, cfg, modules, finished, log, files);
 
-            // the console only showed a spinner, so the full log is kept for troubleshooting
-            string logPath = Path.Combine(cfg.ReportDir, stamp + "_ScanLog.txt");
+            // the window only shows the latest step, so the full log is kept for troubleshooting
+            string logPath = Path.GetFullPath(Path.Combine(cfg.ReportDir, stamp + "_ScanLog.txt"));
             try
             {
-                ui.Line(L.T("sum.logSaved", Path.GetFullPath(logPath)));
-                File.WriteAllLines(logPath, ui.Transcript, new UTF8Encoding(true));    // BOM so Notepad shows Chinese
+                log.Add(L.T("sum.logSaved", logPath));
+                File.WriteAllLines(logPath, log.Snapshot(), new UTF8Encoding(true));    // BOM so Notepad shows Chinese
+                files.LogPath = logPath;
             }
-            catch (Exception ex) { ui.Line(L.T("sum.logError", ex.Message), ConsoleColor.Red); }
+            catch (Exception ex) { log.Add(L.T("sum.logError", ex.Message)); }
 
-            return pdfPath;
+            return files;
         }
 
         private static string SavePdf(string path, RunReport r, ScanConfig cfg, IList<ModuleResult> modules,
-                                      DateTime finished, ConsoleProgress ui)
+                                      DateTime finished, RunLog log, ScanFiles files)
         {
             try
             {
@@ -52,19 +63,19 @@ namespace DeviceScanner.Reporting
 
                 if (!File.Exists(path))
                 {
-                    ui.Line(L.T("sum.pdfMissing", path), ConsoleColor.Red);
+                    files.Error = L.T("sum.pdfMissing", path);
+                    log.Add(files.Error);
                     return null;
                 }
 
                 File.SetAttributes(path, File.GetAttributes(path) | FileAttributes.ReadOnly);
-                ui.Line("");
-                ui.Line(L.T("sum.pdfSaved", Path.GetFullPath(path)));
+                log.Add(L.T("sum.pdfSaved", Path.GetFullPath(path)));
                 return Path.GetFullPath(path);
             }
             catch (Exception ex)
             {
-                ui.Line("");
-                ui.Line(L.T("sum.pdfError", ex.Message), ConsoleColor.Red);
+                files.Error = L.T("sum.pdfError", ex.Message);
+                log.Add(files.Error);
                 return null;
             }
         }

@@ -34,7 +34,9 @@ namespace DeviceScanner.WindowsSpec
         public string SystemLocale { get; } = "en-US";
 
         // ----- files with Chinese characters in the name (report only) -----
-        /// <summary>Top-level folders skipped on every fixed drive (Windows' own files may legitimately use CJK names).</summary>
+        /// <summary>The only fixed drives scanned, by letter.</summary>
+        public HashSet<string> ScanDrives { get; } = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "C" };
+        /// <summary>Top-level folders skipped on every scanned drive (Windows' own files may legitimately use CJK names).</summary>
         public HashSet<string> SkipTopLevelDirs { get; } = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
             "Windows", "Program Files", "Program Files (x86)", "ProgramData",

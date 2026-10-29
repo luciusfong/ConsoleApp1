@@ -3,81 +3,140 @@ using DeviceScanner.Native;
 using DeviceScanner.Profiles;
 using DeviceScanner.Reporting;
 using DeviceScanner.Scanning;
+using DeviceScanner.UI;
 using DeviceScanner.Utils;
 using DeviceScanner.WindowsSpec;
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
+using System.Linq;
+using System.Windows.Forms;
 
 
 namespace DeviceScanner
 {
     internal static class Program
     {
+        /// <summary>One module of a run, and whether the operator has to agree to it.</summary>
+        private sealed class Step
+        {
+            public Module Module { get; set; }
+            public string Question { get; set; }      // null = always runs (nothing on the machine moves)
+            public bool Caution { get; set; }         // the machine moves: asked with a warning, and confirmed before a full run
+            public bool Available { get; set; } = true;
+            public Action Work { get; set; }
+        }
+
         // usage: DeviceScanner.exe [profile file or name] [--lang en|zh]     (no profile = use the Profiles folder; no --lang = ask)
         [STAThread]                                // the Windows dialogs need an STA thread
         private static void Main(string[] args)
         {
-            var ui = new ConsoleProgress();
-            try { Run(args, new ScanConfig(), ui); }
-            catch (Exception ex)
-            {
-                ui.Line(L.T("msg.error", ex), ConsoleColor.Red);
-                Dialogs.Error(L.T("msg.error", ex.Message));
-            }
+            Application.EnableVisualStyles();
+            Application.SetCompatibleTextRenderingDefault(false);
+            try { Run(args, new ScanConfig()); }
+            catch (Exception ex) { Dialogs.Error(L.T("msg.error", ex.Message)); }
         }
 
-        private static void Run(string[] args, ScanConfig cfg, ConsoleProgress ui)
+        private static void Run(string[] args, ScanConfig cfg)
         {
-            Action<string> log = ui.Log;           // every check logs here; the console shows it as a spinner
+            var log = new RunLog();                 // every check logs here; the scan window shows it live
 
             DateTime started = DateTime.Now;
             args = L.Choose(args);                 // English / 中文 for the dialogs and the report
             if (args == null) return;
 
+            // not elevated: start again through the UAC prompt and let that copy do the run
+            if (AdminRestart.Run(ref args) != AdminRestart.Outcome.Continue) return;
+            FirewallAccess.Allow(cfg, log.Add);     // so Windows never stops the scan to ask "Allow access?"
+
             string user = Dialogs.AskText(L.T("prompt.username"));     // who is running the audit, printed in the report as typed
             if (user == null) return;
 
-            MachineProfile profile = ProfileSelector.Select(args, log);
+            MachineProfile profile = ProfileSelector.Select(args, log.Add);
             if (profile == null) return;
 
             var report = new RunReport(profile) { UserName = user, StartedAt = started };
-            ui.Line("");
+            List<Step> steps = Steps(cfg, profile, report, log.Add);
 
+            bool? runAll = ChooseMode(steps);
+            if (runAll == null) return;
+
+            Application.Run(new ScanWindow(report, steps.Select(s => s.Module), log,
+                                           w => RunSteps(w, steps, runAll.Value, report, cfg, log)));
+        }
+
+        /// <summary>The modules in the order they run.</summary>
+        private static List<Step> Steps(ScanConfig cfg, MachineProfile profile, RunReport report, Action<string> log) => new List<Step>
+        {
             // 0. Windows golden-image spec (read only: OS, locale, Defender, NIC settings, drivers, apps, Chinese file names)
-            if (Dialogs.Confirm(L.T("prompt.spec")))
-                RunModule(ui, report, Module.WindowsSpec, () => report.WindowsSpec = new WindowsSpecChecker(cfg, new WindowsSpecConfig(), profile, log).Run());
-            else Skipped(ui, report, Module.WindowsSpec);
+            new Step { Module = Module.WindowsSpec, Question = L.T("prompt.spec"),
+                       Work = () => report.WindowsSpec = new WindowsSpecChecker(cfg, new WindowsSpecConfig(), profile, log).Run() },
 
             // 1. every device the profile lists, at the address the profile gives
-            RunModule(ui, report, Module.Devices, () => new ProfileVerifier(cfg, profile, log).Run(report));
+            new Step { Module = Module.Devices, Work = () => new ProfileVerifier(cfg, profile, log).Run(report) },
 
-            // 2. optional: find everything on the network / COM ports, not just what the profile lists
-            if (Dialogs.Confirm(L.T("prompt.discovery")))
-                RunModule(ui, report, Module.Discovery, () => Discover(cfg, profile, report, log));
-            else Skipped(ui, report, Module.Discovery);
+            // 2. find everything on the network / COM ports, not just what the profile lists
+            new Step { Module = Module.Discovery, Question = L.T("prompt.discovery"), Work = () => Discover(cfg, profile, report, log) },
 
             // 3. homing
-            if (profile.HomePrograms.Count > 0 && Dialogs.Confirm(L.T("prompt.home", string.Join(", ", profile.HomePrograms)), caution: true))
-                RunModule(ui, report, Module.Homing, () => report.Home = new ZmcHoming(cfg, profile, log).Run());
-            else Skipped(ui, report, Module.Homing);
+            new Step { Module = Module.Homing, Caution = true, Available = profile.HomePrograms.Count > 0,
+                       Question = L.T("prompt.home", string.Join(", ", profile.HomePrograms)),
+                       Work = () => report.Home = new ZmcHoming(cfg, profile, log).Run() },
 
             // 4. discrete IO loopback
-            if (profile.IoTests.Count > 0 && Dialogs.Confirm(L.T("prompt.io", profile.IoTests.Count), caution: true))
-                RunModule(ui, report, Module.Io, () => RunIoTests(cfg, profile, report, log));
-            else Skipped(ui, report, Module.Io);
+            new Step { Module = Module.Io, Caution = true, Available = profile.IoTests.Count > 0,
+                       Question = L.T("prompt.io", profile.IoTests.Count), Work = () => RunIoTests(cfg, profile, report, log) },
+        };
 
-            string pdf = ScanSummary.Print(report, cfg, ui);
-            Finish(report, pdf);
-        }
-
-        private static void RunModule(ConsoleProgress ui, RunReport report, Module module, Action work)
+        /// <summary>
+        /// Full run (no more questions) or one by one (asked before each module). A full run that moves the machine
+        /// is confirmed once, listing the same warnings the single questions give. Null = cancelled.
+        /// </summary>
+        private static bool? ChooseMode(List<Step> steps)
         {
-            report.Durations[module] = ui.Run(ModuleVerdicts.Title(module), work);
-            ui.Result(ModuleVerdicts.For(report, module));
+            int selected = 1;
+            while (true)
+            {
+                selected = Dialogs.Choose(L.T("mode.question"), new[] { L.T("mode.all"), L.T("mode.each") }, selected);
+                if (selected < 0) return null;
+                if (selected == 1) return false;
+
+                var moving = steps.Where(s => s.Available && s.Caution).Select(s => "• " + s.Question).ToList();
+                if (moving.Count == 0 || Dialogs.Confirm(L.T("mode.allCaution") + "\n\n" + string.Join("\n\n", moving), caution: true))
+                    return true;
+            }
         }
 
-        private static void Skipped(ConsoleProgress ui, RunReport report, Module module) =>
-            ui.Result(ModuleVerdicts.For(report, module));
+        /// <summary>Runs on the scan window's worker thread.</summary>
+        private static void RunSteps(ScanWindow window, List<Step> steps, bool runAll, RunReport report, ScanConfig cfg, RunLog log)
+        {
+            try
+            {
+                foreach (var step in steps)
+                {
+                    bool run = step.Available && (step.Question == null || runAll || window.Ask(step.Question, step.Caution));
+                    if (run)
+                    {
+                        log.Add("");
+                        log.Add($"===== {ModuleVerdicts.Title(step.Module)} =====");
+                        window.Begin(step.Module);
+                        var clock = Stopwatch.StartNew();
+                        try { step.Work(); }
+                        finally { report.Durations[step.Module] = clock.Elapsed; }
+                    }
+                    window.End(ModuleVerdicts.For(report, step.Module));
+                }
+            }
+            catch (Exception ex)
+            {
+                // keep what ran so far: the report is still written
+                log.Add(L.T("msg.error", ex));
+                window.ShowError(L.T("msg.error", ex.Message));
+            }
+
+            ScanFiles files = ScanSummary.Save(report, cfg, log);
+            window.Finish(ModuleVerdicts.Overall(ModuleVerdicts.All(report)), files);
+        }
 
         private static void Discover(ScanConfig cfg, MachineProfile profile, RunReport report, Action<string> log)
         {
@@ -96,26 +155,6 @@ namespace DeviceScanner
 
                 report.Io.AddRange(new ZmcDiscreteIo(cfg, log).RunAll(zmc, profile.IoTests));
                 report.IoRun = true;
-            }
-        }
-
-        /// <summary>Closing dialog: the overall verdict, and an offer to open the PDF.</summary>
-        private static void Finish(RunReport report, string pdf)
-        {
-            var verdict = ModuleVerdicts.Overall(ModuleVerdicts.All(report));
-            string result = verdict.Passed ? L.T("sum.overallPass") : L.T("sum.overallFail", verdict.Failures);
-            if (verdict.Warnings > 0) result += "\n" + L.T("sum.warnings", verdict.Warnings).Trim();
-
-            if (pdf == null)
-            {
-                Dialogs.Error(result + "\n\n" + L.T("msg.noPdf"));
-                return;
-            }
-
-            if (Dialogs.Confirm(result + "\n\n" + L.T("msg.openPdf"), yesByDefault: true))
-            {
-                try { Process.Start(pdf); }
-                catch (Exception ex) { Dialogs.Error(L.T("sum.pdfError", ex.Message)); }
             }
         }
     }

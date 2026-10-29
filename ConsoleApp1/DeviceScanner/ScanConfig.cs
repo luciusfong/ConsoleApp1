@@ -35,5 +35,8 @@ namespace DeviceScanner
         public int IoSettleMs { get; } = 1000;               // used when a profile io line has no settle time
         public string Password = "ScanReport"; // password for PDF encryption
         public string ReportDir = "ScanReports"; // directory to save PDF reports
+
+        // ----- Windows Firewall -----
+        public string FirewallRuleName = "Device Scanner";   // inbound allow rule for this exe, so Windows never asks to allow network access
     }
 }

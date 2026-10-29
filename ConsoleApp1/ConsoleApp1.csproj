@@ -5,7 +5,7 @@
     <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
     <Platform Condition=" '$(Platform)' == '' ">X64</Platform>
     <ProjectGuid>{0AE7416E-21DF-4E20-83E5-307FBD568A10}</ProjectGuid>
-    <OutputType>Exe</OutputType>
+    <OutputType>WinExe</OutputType>
     <RootNamespace>ConsoleApp1</RootNamespace>
     <AssemblyName>ConsoleApp1</AssemblyName>
     <TargetFrameworkVersion>v4.7.2</TargetFrameworkVersion>
@@ -170,6 +170,8 @@
     </Reference>
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="DeviceScanner\AdminRestart.cs" />
+    <Compile Include="DeviceScanner\FirewallAccess.cs" />
     <Compile Include="DeviceScanner\Program.cs" />
     <Compile Include="DeviceScanner\ScanConfig.cs" />
     <Compile Include="Motion\DiscreteIoReport.cs" />
@@ -187,6 +189,8 @@
     <Compile Include="Reporting\PdfReport.cs" />
     <Compile Include="Reporting\RunReport.cs" />
     <Compile Include="Reporting\ScanSummary.cs" />
+    <Compile Include="UI\ScanWindow.cs" />
+    <Compile Include="UI\Spinner.cs" />
     <Compile Include="Scanning\ComProbes.cs" />
     <Compile Include="Scanning\ComScanner.cs" />
     <Compile Include="Scanning\DeviceProbe.cs" />
@@ -196,9 +200,9 @@
     <Compile Include="Scanning\ProbeHelpers.cs" />
     <Compile Include="Scanning\ProbeResult.cs" />
     <Compile Include="Scanning\ProfileVerifier.cs" />
-    <Compile Include="Utils\ConsoleProgress.cs" />
     <Compile Include="Utils\Dialogs.cs" />
     <Compile Include="Utils\Locale.cs" />
+    <Compile Include="Utils\RunLog.cs" />
     <Compile Include="Utils\Strings.cs" />
     <Compile Include="WindowsSpec\ChineseNameCheck.cs" />
     <Compile Include="WindowsSpec\DefenderCheck.cs" />

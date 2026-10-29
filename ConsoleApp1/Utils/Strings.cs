@@ -43,11 +43,33 @@ namespace DeviceScanner.Utils
             ["msg.zmcOpenFail"]  = new[] { "Cannot open ZMC at {0}.", "无法连接 ZMC：{0}。" },
             ["msg.zmcNotInit"]   = new[] { "Warning: controller not initialized; IO readings may differ from the main app.",
                                            "警告：控制器未初始化，IO 读数可能与主程序不同。" },
-            ["msg.openPdf"]      = new[] { "Open the PDF report now?", "现在打开 PDF 报告？" },
-            ["msg.noPdf"]        = new[] { "The PDF report could not be saved; see the console for the reason.",
-                                           "PDF 报告未能保存，原因见控制台。" },
             ["msg.error"]        = new[] { "The scan stopped because of an unexpected error:\n{0}", "检测因意外错误而中止：\n{0}" },
-            ["con.more"]         = new[] { "... and {0} more (see the PDF report)", "……另有 {0} 项（见 PDF 报告）" },
+
+            // ----- admin rights -----
+            ["admin.declined"]   = new[] { "Administrator rights were not granted.\n\nContinue without them? Some Windows checks will show WARN, and Windows may ask to allow network access during the scan.",
+                                           "未获得管理员权限。\n\n是否在没有管理员权限的情况下继续？部分 Windows 检查将显示警告，检测期间 Windows 可能会询问是否允许网络访问。" },
+
+            // ----- run mode -----
+            ["mode.question"]    = new[] { "How do you want to run the checks?", "请选择检测方式：" },
+            ["mode.all"]         = new[] { "Run all modules (no more questions)", "运行全部模块（不再逐项询问）" },
+            ["mode.each"]        = new[] { "One by one (ask before each module)", "逐项运行（每个模块前询问）" },
+            ["mode.allCaution"]  = new[] { "A full run will move the machine without asking again:", "全部运行将直接动作机台，不再询问：" },
+
+            // ----- scan window -----
+            ["ui.operator"]      = new[] { "Operator: {0}    Started: {1}", "操作员：{0}    开始时间：{1}" },
+            ["ui.starting"]      = new[] { "Starting...", "正在启动……" },
+            ["ui.checking"]      = new[] { "Checking {0}...", "正在检查：{0}……" },
+            ["ui.waitingNext"]   = new[] { "Next module...", "下一个模块……" },
+            ["ui.waiting"]       = new[] { "WAITING", "等待" },
+            ["ui.running"]       = new[] { "RUNNING", "进行中" },
+            ["ui.more"]          = new[] { "... and {0} more (see the PDF report)", "……另有 {0} 项（见 PDF 报告）" },
+            ["ui.showLog"]       = new[] { "Show log", "显示日志" },
+            ["ui.hideLog"]       = new[] { "Hide log", "隐藏日志" },
+            ["ui.openLog"]       = new[] { "Open log file", "打开日志文件" },
+            ["ui.openPdf"]       = new[] { "Open PDF report", "打开 PDF 报告" },
+            ["ui.close"]         = new[] { "Close", "关闭" },
+            ["ui.quitRunning"]   = new[] { "A check is still running and cannot be stopped half way.\nQuit anyway? No report will be saved.",
+                                           "检测仍在进行，无法中途停止。\n仍要退出吗？将不会保存报告。" },
 
             // ----- profile selection -----
             ["profile.loaded"]   = new[] { "Profile: {0}  ({1})", "配置文件：{0}  （{1}）" },

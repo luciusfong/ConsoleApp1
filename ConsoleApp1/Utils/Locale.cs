@@ -2,7 +2,6 @@
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
-using System.Text;
 
 namespace DeviceScanner.Utils
 {
@@ -17,16 +16,7 @@ namespace DeviceScanner.Utils
     {
         public static Lang Current { get; private set; } = Lang.En;
 
-        public static void Set(Lang lang)
-        {
-            Current = lang;
-            if (lang == Lang.Zh)
-            {
-                // Chinese needs a UTF-8 console; glyphs show if the console font has them (Windows Terminal does;
-                // the classic console needs a CJK font such as NSimSun in its Properties > Font).
-                try { Console.OutputEncoding = Encoding.UTF8; } catch { }
-            }
-        }
+        public static void Set(Lang lang) => Current = lang;
 
         /// <summary>Translated text for <paramref name="key"/>, formatted with <paramref name="args"/> ({0}, {1}, ...).</summary>
         public static string T(string key, params object[] args)

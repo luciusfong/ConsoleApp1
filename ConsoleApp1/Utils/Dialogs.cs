@@ -8,7 +8,7 @@ namespace DeviceScanner.Utils
 {
     /// <summary>
     /// Windows dialogs for everything the operator answers (language, name, profile, yes/no), so nothing is typed into the console.
-    /// Every dialog is top-most and centred on the screen, because the console that opened it is usually in front.
+    /// Every dialog is top-most, and centred on the scan window (or the screen, before the window opens).
     /// Needs an STA thread ([STAThread] on Main).
     /// </summary>
     internal static class Dialogs
@@ -22,11 +22,11 @@ namespace DeviceScanner.Utils
         }
 
         /// <summary>Yes / No question. No has the focus unless <paramref name="yesByDefault"/>, like the old "(y/N)", so Enter alone never starts anything.</summary>
-        public static bool Confirm(string question, bool caution = false, bool yesByDefault = false)
+        public static bool Confirm(string question, bool caution = false, bool yesByDefault = false, IWin32Window owner = null)
         {
             using (var form = new PromptForm(question, caution ? SystemIcons.Warning : SystemIcons.Question,
                                              L.T("btn.yes"), L.T("btn.no"), null, focusOk: yesByDefault))
-                return form.ShowDialog() == DialogResult.OK;
+                return Show(form, owner) == DialogResult.OK;
         }
 
         /// <summary>One line of text. OK only works once something is typed; null = window closed / cancelled.</summary>
@@ -62,14 +62,22 @@ namespace DeviceScanner.Utils
             }
         }
 
-        public static void Inform(string message) => Message(message, SystemIcons.Information);
+        public static void Inform(string message, IWin32Window owner = null) => Message(message, SystemIcons.Information, owner);
 
-        public static void Error(string message) => Message(message, SystemIcons.Error);
+        public static void Error(string message, IWin32Window owner = null) => Message(message, SystemIcons.Error, owner);
 
-        private static void Message(string message, Icon icon)
+        private static void Message(string message, Icon icon, IWin32Window owner)
         {
             using (var form = new PromptForm(message, icon, L.T("btn.ok"), null, null, focusOk: true))
-                form.ShowDialog();
+                Show(form, owner);
+        }
+
+        /// <summary>Centred on the scan window when there is one, otherwise on the screen.</summary>
+        private static DialogResult Show(Form form, IWin32Window owner)
+        {
+            if (owner == null) return form.ShowDialog();
+            form.StartPosition = FormStartPosition.CenterParent;
+            return form.ShowDialog(owner);
         }
 
         [DllImport("user32.dll")]
@@ -90,7 +98,7 @@ namespace DeviceScanner.Utils
                 MinimizeBox = false;
                 StartPosition = FormStartPosition.CenterScreen;
                 TopMost = true;
-                ShowInTaskbar = true;          // the console has no other window to switch back to
+                ShowInTaskbar = true;          // before the scan window opens, this is the only window of the app
                 AutoSize = true;
                 AutoSizeMode = AutoSizeMode.GrowAndShrink;
                 Padding = new Padding(16);
@@ -129,7 +137,7 @@ namespace DeviceScanner.Utils
                 CancelButton = cancelButton ?? OkButton;
                 ActiveControl = focusOk || cancelButton == null ? OkButton : cancelButton;
 
-                Shown += (s, e) => Activate();    // bring it in front of the console even after a long scan
+                Shown += (s, e) => Activate();    // bring it to the front even after a long scan
             }
 
             private static Button NewButton(string text, DialogResult result) => new Button

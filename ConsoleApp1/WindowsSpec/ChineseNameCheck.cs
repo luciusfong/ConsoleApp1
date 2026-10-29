@@ -7,8 +7,8 @@ using DeviceScanner.Reporting;
 namespace DeviceScanner.WindowsSpec
 {
     /// <summary>
-    /// Finds files and folders whose NAME contains Chinese characters, on every fixed drive, skipping
-    /// Windows' own top-level folders (WindowsSpecConfig.SkipTopLevelDirs). REPORT ONLY: nothing is deleted.
+    /// Finds files and folders whose NAME contains Chinese characters, on the fixed drives in
+    /// WindowsSpecConfig.ScanDrives (C: only), skipping Windows' own top-level folders (WindowsSpecConfig.SkipTopLevelDirs). REPORT ONLY: nothing is deleted.
     /// A Chinese-named folder is reported once and not descended into.
     /// The full list is written to ReportDir\ChineseNames_&lt;PC&gt;_&lt;time&gt;.txt.
     /// </summary>
@@ -31,7 +31,8 @@ namespace DeviceScanner.WindowsSpec
             long scanned = 0;
             int denied = 0;
 
-            foreach (var drive in DriveInfo.GetDrives().Where(d => d.DriveType == DriveType.Fixed && d.IsReady))
+            foreach (var drive in DriveInfo.GetDrives().Where(d => d.DriveType == DriveType.Fixed && d.IsReady &&
+                                                                   Spec.ScanDrives.Contains(d.Name.Substring(0, 1))))
             {
                 Log($"    scanning {drive.Name} ...");
                 roots.Add(drive.Name.TrimEnd('\\'));
@@ -39,7 +40,7 @@ namespace DeviceScanner.WindowsSpec
             }
 
             string listFile = WriteList(hits);
-            string scope = $"{string.Join(", ", roots)} (skipping {string.Join(", ", Spec.SkipTopLevelDirs.OrderBy(s => s))})";
+            string scope = $"{string.Join(", ", roots)} only (skipping {string.Join(", ", Spec.SkipTopLevelDirs.OrderBy(s => s))})";
             string detail = $"{scanned:N0} entries scanned, {denied} folder(s) not readable" +
                             (listFile != null ? $"; full list: {listFile}" : "");
 
