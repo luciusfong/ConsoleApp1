@@ -231,8 +231,7 @@
   <ItemGroup>
     <None Include="App.config" />
     <None Include="packages.config" />
-    <None Include="Profiles\sd1x.profile" />
-    <Content Include="Profiles\i10coattwin.profile">
+    <Content Include="Profiles\*.profile">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
   </ItemGroup>
