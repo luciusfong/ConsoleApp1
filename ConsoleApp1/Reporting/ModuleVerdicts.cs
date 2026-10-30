@@ -139,13 +139,13 @@ namespace DeviceScanner.Reporting
                 Summary = L.T("mod.discoverySummary", r.DiscoveredIp?.Entries.Count ?? 0, r.DiscoveredCom?.Found.Count ?? 0),
             };
 
-            // PC addresses set to the profile: a conflict (or a change that failed) is a failure, an unconfirmed change a warning
+            // PC and device addresses set to the profile: a conflict (or a change that failed) is a failure, an unconfirmed change a warning
             int changed = r.AddressFixes.Count(f => f.Status == CheckStatus.Pass);
             if (changed > 0) result.Summary += "; " + L.T("mod.fixSummary", changed);
             foreach (var f in r.AddressFixes.Where(f => f.Status != CheckStatus.Pass))
             {
                 if (f.Status == CheckStatus.Fail) result.Failures++; else result.Warnings++;
-                result.Problems.Add($"PC {f.Kind} {f.Target} {(f.From.Length > 0 ? f.From + " -> " : "")}{f.To}: {f.Detail}".Replace("  ", " "));
+                result.Problems.Add($"{f.Where} {f.Kind} {f.Target} {(f.From.Length > 0 ? f.From + " -> " : "")}{f.To}: {f.Detail}".Replace("  ", " "));
             }
 
             // a ZMC that answers somewhere else than the profile says

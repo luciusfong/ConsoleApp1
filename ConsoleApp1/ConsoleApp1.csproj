@@ -166,6 +166,11 @@
     <Reference Include="System.Windows.Forms" />
     <Reference Include="System.Net.Http" />
     <Reference Include="System.Xml" />
+    <Reference Include="MvCameraControl.Net, Version=3.4.0.1, Culture=neutral, PublicKeyToken=52fddfb3f94be800, processorArchitecture=MSIL">
+      <SpecificVersion>False</SpecificVersion>
+      <HintPath>External\MvCameraControl.Net.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
     <Reference Include="NSW_Components, Version=2.3.0.0, Culture=neutral, processorArchitecture=AMD64">
       <SpecificVersion>False</SpecificVersion>
       <HintPath>External\NSW_Components.dll</HintPath>
@@ -195,6 +200,7 @@
     <Compile Include="UI\Spinner.cs" />
     <Compile Include="Scanning\ComProbes.cs" />
     <Compile Include="Scanning\ComScanner.cs" />
+    <Compile Include="Scanning\DeviceAddressFixer.cs" />
     <Compile Include="Scanning\DeviceProbe.cs" />
     <Compile Include="Scanning\IpProbes.cs" />
     <Compile Include="Scanning\IpScanner.cs" />
@@ -226,6 +232,9 @@
     <None Include="App.config" />
     <None Include="packages.config" />
     <None Include="Profiles\sd1x.profile" />
+    <Content Include="Profiles\i10coattwin.profile">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
   </ItemGroup>
   <!-- Third-party DLLs: kept in External\, copied flat next to the exe.
        NSW_Components.dll is copied by its Reference; Newtonsoft.Json.dll comes from the NuGet package. -->

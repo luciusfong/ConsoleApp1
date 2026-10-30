@@ -18,10 +18,12 @@ namespace DeviceScanner.Reporting
         public string Detail { get; set; } = "";
     }
 
-    /// <summary>A PC-side address discovery set to match the profile (NIC IP or COM port number), or the conflict that stopped it.</summary>
+    /// <summary>An address discovery set to match the profile (PC: NIC IP or COM port number; device: camera or ZMC IP), or the conflict that stopped it.</summary>
     internal sealed class AddressFix
     {
-        public string Kind { get; set; }         // "NIC" or "COM"
+        public bool OnDevice { get; set; }       // false = this PC was changed, true = the device was
+        public string Where => OnDevice ? "Device" : "PC";
+        public string Kind { get; set; }         // "NIC" or "COM"; device: "Camera" or "ZMC"
         public string Target { get; set; }       // adapter name, or device name
         public string From { get; set; } = "";
         public string To { get; set; } = "";
@@ -48,7 +50,7 @@ namespace DeviceScanner.Reporting
         public List<DeviceCheck> Devices { get; } = new List<DeviceCheck>();
         public IpScanReport DiscoveredIp { get; set; }         // null = discovery not run
         public ComScanReport DiscoveredCom { get; set; }
-        public List<AddressFix> AddressFixes { get; } = new List<AddressFix>();   // PC-side changes made by discovery
+        public List<AddressFix> AddressFixes { get; } = new List<AddressFix>();   // address changes made by discovery
         public HomeResult Home { get; set; }                   // null = not run
         public bool IoRun { get; set; }
         public string IoError { get; set; }                    // IO test was wanted but could not start (e.g. ZMC not reachable)

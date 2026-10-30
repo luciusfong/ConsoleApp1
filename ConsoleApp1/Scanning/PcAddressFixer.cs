@@ -14,7 +14,7 @@ using Microsoft.Win32;
 namespace DeviceScanner.Scanning
 {
     /// <summary>
-    /// PC side of discovery: makes this PC's addresses match the profile. Devices themselves are never changed.
+    /// PC side of discovery: makes this PC's addresses match the profile (devices: DeviceAddressFixer).
     ///   NIC  every profile subnet (192.168.x.0/24 of zmc.ip and ip.expect) needs exactly one local NIC on it.
     ///        Camera subnets must be on the camera NIC (ScanConfig.CameraNicPnpId, Intel I350); others on any wired NIC.
     ///        A subnet with no NIC is given to the one free, connected, wired NIC as a static 192.168.x.200.
