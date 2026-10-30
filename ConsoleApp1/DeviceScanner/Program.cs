@@ -56,7 +56,9 @@ namespace DeviceScanner
             if (profile == null) return;
 
             var report = new RunReport(profile) { UserName = user, StartedAt = started };
-            List<Step> steps = Steps(cfg, profile, report, log.Add);
+            ScanWindow window = null;                                  // device address changes are confirmed in it
+            Func<string, bool> confirm = q => window.Ask(q, true);
+            List<Step> steps = Steps(cfg, profile, report, log.Add, confirm);
 
             bool? runAll = ChooseMode(steps);
             if (runAll == null) return;
@@ -64,19 +66,20 @@ namespace DeviceScanner
             // "Scan again" closes the window and runs once more with the same operator, profile and run mode
             while (true)
             {
-                var window = new ScanWindow(report, steps.Select(s => s.Module), log,
+                window = new ScanWindow(report, steps.Select(s => s.Module), log,
                                             w => RunSteps(w, steps, runAll.Value, report, cfg, log));
                 Application.Run(window);
                 if (!window.RescanRequested) return;
 
                 log = new RunLog();
                 report = new RunReport(profile) { UserName = user, StartedAt = DateTime.Now };
-                steps = Steps(cfg, profile, report, log.Add);
+                steps = Steps(cfg, profile, report, log.Add, confirm);
             }
         }
 
         /// <summary>The modules in the order they run.</summary>
-        private static List<Step> Steps(ScanConfig cfg, MachineProfile profile, RunReport report, Action<string> log) => new List<Step>
+        private static List<Step> Steps(ScanConfig cfg, MachineProfile profile, RunReport report, Action<string> log,
+                                            Func<string, bool> confirm) => new List<Step>
         {
             // 0. Windows golden-image spec (read only: OS, locale, Defender, NIC settings, drivers, apps, Chinese file names)
             new Step { Module = Module.WindowsSpec, Question = L.T("prompt.spec"),
@@ -86,7 +89,7 @@ namespace DeviceScanner
             new Step { Module = Module.Devices, Work = () => new ProfileVerifier(cfg, profile, log).Run(report) },
 
             // 2. find everything on the network / COM ports, not just what the profile lists
-            new Step { Module = Module.Discovery, Question = L.T("prompt.discovery"), Work = () => Discover(cfg, profile, report, log) },
+            new Step { Module = Module.Discovery, Question = L.T("prompt.discovery"), Work = () => Discover(cfg, profile, report, log, confirm) },
 
             // 3. homing
             new Step { Module = Module.Homing, Caution = true, Available = profile.HomePrograms.Count > 0,
@@ -151,13 +154,17 @@ namespace DeviceScanner
 
         /// <summary>
         /// The PC's NIC addresses are set to the profile subnets before the sweep (so it can reach them), and COM port
-        /// numbers after the COM scan (it tells which device sits on which port). Devices are never changed.
+        /// numbers after the COM scan (it tells which device sits on which port). After the sweep, a camera or the ZMC
+        /// at a wrong address is moved to its profile address, each change confirmed by the operator.
         /// </summary>
-        private static void Discover(ScanConfig cfg, MachineProfile profile, RunReport report, Action<string> log)
+        private static void Discover(ScanConfig cfg, MachineProfile profile, RunReport report, Action<string> log, Func<string, bool> confirm)
         {
             var fixer = new PcAddressFixer(cfg, profile, log);
             fixer.FixNics(report);
             report.DiscoveredIp = new IpScanner(cfg, IpProbes.Build(cfg), log).Scan();
+            var devices = new DeviceAddressFixer(cfg, profile, confirm, log);
+            devices.FixCameras(report);
+            devices.FixZmc(report);
             report.DiscoveredCom = new ComScanner(cfg, ComProbes.Build(profile.TempSlaves), log).Scan();
             fixer.FixComPorts(report);
         }
